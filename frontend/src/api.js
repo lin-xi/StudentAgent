@@ -26,12 +26,12 @@ export async function generateQuestion(subject, grade, kpId, difficulty, questio
   })
 }
 
-export async function generateQuestionBatch(subject, grade, kpId, difficulty, count) {
-  const promises = []
-  for (let i = 0; i < count; i++) {
-    promises.push(generateQuestion(subject, grade, kpId, difficulty, i))
-  }
-  return Promise.all(promises)
+export async function generateQuestionBatch(subject, grade, kpId, difficulty) {
+  const data = await request('/generate-question-batch', {
+    method: 'POST',
+    body: JSON.stringify({ subject, grade, kp_id: kpId, difficulty }),
+  })
+  return data.questions
 }
 
 export async function evaluateAnswer(subject, grade, kpId, difficulty, question, options, userAnswer, correctAnswer) {

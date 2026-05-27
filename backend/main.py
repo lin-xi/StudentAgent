@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from agent import generate_question, evaluate_answer
+from agent import generate_question, generate_question_batch, evaluate_answer
 from syllabus import get_syllabus
 
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +35,12 @@ class GenerateQuestionRequest(BaseModel):
     kp_id: int = Field(..., ge=0, description="知识点 ID")
     difficulty: str = Field(..., pattern="^(basic|intermediate|advanced)$")
     question_index: int = Field(0, ge=0, le=20, description="同一知识点难度下的题号，用于生成不同题目")
+
+class GenerateQuestionBatchRequest(BaseModel):
+    subject: str = Field(..., description="科目，如 语文/数学/英语")
+    grade: int = Field(..., ge=1, le=12, description="年级")
+    kp_id: int = Field(..., ge=0, description="知识点 ID")
+    difficulty: str = Field(..., pattern="^(basic|intermediate|advanced)$")
 
 class EvaluateRequest(BaseModel):
     subject: str
@@ -70,6 +76,17 @@ def api_generate_question(req: GenerateQuestionRequest):
         return question
     except Exception as e:
         logger.exception("Error generating question")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generate-question-batch")
+def api_generate_question_batch(req: GenerateQuestionBatchRequest):
+    """生成 8 道题目（一次 LLM 调用）。"""
+    try:
+        questions = generate_question_batch(req.subject, req.grade, req.kp_id, req.difficulty)
+        return {"questions": questions}
+    except Exception as e:
+        logger.exception("Error generating question batch")
         raise HTTPException(status_code=500, detail=str(e))
 
 

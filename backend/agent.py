@@ -45,11 +45,11 @@ def _cache_set(key: str, value: Any) -> None:
     _llm_cache[key] = value
 
 
-def _make_question_cache_key(
-    subject: str, grade: int, kp_name: str, difficulty: str, question_index: int
+def _make_question_batch_cache_key(
+    subject: str, grade: int, kp_name: str, difficulty: str
 ) -> str:
-    """生成出题缓存 key（含 question_index 确保 8 题独立缓存）。"""
-    raw = f"q:{subject}:{grade}:{kp_name}:{difficulty}:{question_index}"
+    """生成出题批次缓存 key（一次 LLM 调用返回 8 题，整批缓存）。"""
+    raw = f"batch:{subject}:{grade}:{kp_name}:{difficulty}"
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
@@ -109,30 +109,22 @@ def _try_init_llm():
         return False
 
 
-def _try_langchain_question(
-    subject: str,
-    grade: int,
-    kp_name: str,
-    difficulty: str,
-    question_index: int = 0,
-) -> Optional[dict]:
-    """尝试使用 LangChain 生成题目（带缓存，第 question_index+1 题）。"""
+def _try_langchain_question_batch(
+    subject: str, grade: int, kp_name: str, difficulty: str
+) -> Optional[list[dict]]:
+    """一次 LLM 调用生成 8 道题目（带缓存）。"""
     if not _try_init_llm():
         return None
 
     # ---- 1. 查缓存 ----
-    cache_key = _make_question_cache_key(
-        subject, grade, kp_name, difficulty, question_index
-    )
+    cache_key = _make_question_batch_cache_key(subject, grade, kp_name, difficulty)
     cached = _cache_get(cache_key)
     if cached is not None:
-        logger.info("Q cache HIT %s/%s idx=%d", subject, kp_name, question_index)
+        logger.info("Q batch cache HIT %s/%s", subject, kp_name)
         return cached
 
     # ---- 2. 未命中，调大模型 ----
-    logger.info(
-        "Q cache MISS %s/%s idx=%d — calling LLM", subject, kp_name, question_index
-    )
+    logger.info("Q batch cache MISS %s/%s — calling LLM", subject, kp_name)
 
     difficulty_label = {
         "basic": "基础",
@@ -140,7 +132,8 @@ def _try_langchain_question(
         "advanced": "高阶",
     }.get(difficulty, difficulty)
 
-    math_prompt = f"""【角色设定】
+    math_prompt = f"""
+    【角色设定】
     你是一位拥有20年教龄的小学特级数学教师，曾获全国教学大赛一等奖，深谙儿童认知发展规律。你出题的特点是：题目生活化、思维有梯度、陷阱设置巧妙、能诊断学生真实水平。
 
     【任务】
@@ -149,9 +142,9 @@ def _try_langchain_question(
     【出题要求 - 必须逐条执行】
 
     1. 学情诊断前置
-       - 先分析该知识点学生的3个典型认知误区
-       - 列出该年级学生已具备的前置知识
-       - 说明本题要检测的核心能力（知识记忆/理解应用/迁移创新）
+        - 先分析该知识点学生的3个典型认知误区
+        - 列出该年级学生已具备的前置知识
+        - 说明本题要检测的核心能力（知识记忆/理解应用/迁移创新）
 
     2. 题目结构设计（共8题）
         - 基础巩固层 第1，2题：直接应用公式/概念，90%学生应能独立完成
@@ -161,93 +154,99 @@ def _try_langchain_question(
         - 每道题不能相同
 
     3. 每道题必须包含
-       - 题目正文（语言生动，避免"小明小红"刻板情境）
-       - 答案，详细的解题步骤
-       - 金牌批注：
+        - 题目正文（语言生动，避免"小明小红"刻板情境）
+        - 答案，详细的解题步骤
+        - 金牌批注：
             * 每个错误选项对应的真实思维路径
             * 这道题诊断的具体漏洞
             * 一句话点醒话术
 
     4. 返回严格的 JSON 格式，不要包含其他文字
     5. JSON 格式：[
-        {{"question": "题目正文1", "type"："problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
-        {{"question": "题目正文2", "type"："problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}}
-        {{"question": "题目正文3", "type"："problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}}
-        {{"question": "题目正文4", "type"："problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}}
-        {{"question": "题目正文5", "type"："problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}}
-        {{"question": "题目正文6", "type"："problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}}
-        {{"question": "题目正文7", "type"："problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}}
-        {{"question": "题目正文8", "type"："problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}}
+        {{"question": "题目正文1", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
+        {{"question": "题目正文2", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
+        {{"question": "题目正文3", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
+        {{"question": "题目正文4", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
+        {{"question": "题目正文5", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
+        {{"question": "题目正文6", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
+        {{"question": "题目正文7", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
+        {{"question": "题目正文8", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}}
     ]
     """
 
-english_prompt = f"""【角色设定】
-你是一位拥有25年教龄的小学英语特级教师，全国英语教学大赛金奖得主，人教版/外研版教材核心编委。你深谙中国小学生英语学习的母语负迁移规律，擅长用选择题精准"钓鱼"——每个错误选项都对应一个真实的错误思维路径。你的题目特点是：语境真实、干扰项有心理学依据、题干本身就是语言输入。
+    english_prompt = f"""
+    【角色设定】
+    你是一位拥有25年教龄的小学英语特级教师，全国英语教学大赛金奖得主，人教版/外研版教材核心编委。你深谙中国小学生英语学习的母语负迁移规律，擅长用选择题精准"钓鱼"——每个错误选项都对应一个真实的错误思维路径。你的题目特点是：语境真实、干扰项有心理学依据、题干本身就是语言输入。
 
-【任务】
-请为小学【{grade}年级】英语的知识点【{kp_name}】设计一套{difficulty_label}难度的选择题诊断练习。
+    【任务】
+    请为小学【{grade}年级】英语的知识点【{kp_name}】设计一套{difficulty_label}难度的选择题诊断练习。
 
-【出题铁律 - 逐条执行】
+    【出题铁律 - 逐条执行】
 
-1. 学情诊断前置（先输出这部分）
-   - "{kp_name}"中国小学生的3个母语负迁移错误
-   - 学习该知识点前，学生必须已掌握的2个前置知识
-   - 该知识点在课标中的能力层级要求（一级/二级/三级）
+    1. 学情诊断前置（先输出这部分）
+        - "{kp_name}"中国小学生的3个母语负迁移错误
+        - 学习该知识点前，学生必须已掌握的2个前置知识
+        - 该知识点在课标中的能力层级要求（一级/二级/三级）
 
-2. 题目结构（共8题，全部为单项选择，每题4个选项）
-   □ 形式识别层（2题）：考察"{kp_name}"的形式本身
-      - 选项设计为"形式辨析"型
-      - 至少1题含视觉/听觉陷阱（如：形近词、同音词）
+    2. 题目结构（共8题，全部为单项选择，每题4个选项）
+        □ 形式识别层（2题）：考察"{kp_name}"的形式本身
+            - 选项设计为"形式辨析"型
+            - 至少1题含视觉/听觉陷阱（如：形近词、同音词）
 
-   □ 语境辨析层（2题）：嵌入真实对话/短文片段
-      - 题干为20-30词的微语境
-      - 错误选项对应"似是而非"的真实错误
-      - 至少2题的错误选项来自中文直译思维
+        □ 语境辨析层（2题）：嵌入真实对话/短文片段
+            - 题干为20-30词的微语境
+            - 错误选项对应"似是而非"的真实错误
+            - 至少2题的错误选项来自中文直译思维
 
-   □ 语用得体层（2题）：考察场合、身份、礼貌程度
-      - 错误选项为"语法对但不得体"
+        □ 语用得体层（2题）：考察场合、身份、礼貌程度
+            - 错误选项为"语法对但不得体"
 
-   □ 综合陷阱层（1题）："金牌陷阱题"
-      - "{kp_name}"与其他知识点交叉
-      - 4个选项都看似合理
-      - 预估错误率60%
+        □ 综合陷阱层（1题）："金牌陷阱题"
+            - "{kp_name}"与其他知识点交叉
+            - 4个选项都看似合理
+            - 预估错误率60%
 
-3. 每道题必须包含
-   - 题目正文（语言生动，真实场景：课堂/家庭/操场/食堂/春游）
-   - 选项A/B/C/D（正确选项位置随机）
-   - 答案，A/B/C/D中的正确选项字母
-   - 金牌批注：
-        * 每个错误选项对应的真实思维路径
-        * 这道题诊断的具体漏洞
-        * 一句话点醒话术
+    3. 每道题必须包含
+    - 题目正文（语言生动，真实场景：课堂/家庭/操场/食堂/春游）
+    - 选项A/B/C/D（正确选项位置随机）
+    - 答案，A/B/C/D中的正确选项字母
+    - 金牌批注：
+            * 每个错误选项对应的真实思维路径
+            * 这道题诊断的具体漏洞
+            * 一句话点醒话术
 
-4. 干扰项心理学模板
-   - 选项A：机械操练错误（漏形式标记）
-   - 选项B：母语直译陷阱（中式英语）
-   - 选项C：过度泛化错误（规则滥用）
-   - 选项D：正确答案
-   - 至少3题打破"三长一短"等应试技巧
+    4. 干扰项心理学模板
+    - 选项A：机械操练错误（漏形式标记）
+    - 选项B：母语直译陷阱（中式英语）
+    - 选项C：过度泛化错误（规则滥用）
+    - 选项D：正确答案
+    - 至少3题打破"三长一短"等应试技巧
 
-5. 语境真实性
-   - 人名：Mike, Sarah, Wu Binbin, Chen Jie, Robin等教材人物
-   - 场景：小学生真实生活
-   - 拒绝真空语法题
+    5. 语境真实性
+    - 人名：Mike, Sarah, Wu Binbin, Chen Jie, Robin等教材人物
+    - 场景：小学生真实生活
+    - 拒绝真空语法题
 
-6. 返回严格的 JSON 格式，不要包含其他文字
-7. JSON 格式：[
-    {{"question": "题目正文1", "type"："MCQ", "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
-    {{"question": "题目正文2", "type"："MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}}
-    {{"question": "题目正文3", "type"："MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}}
-    {{"question": "题目正文4", "type"："MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}}
-    {{"question": "题目正文5", "type"："MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}}
-    {{"question": "题目正文6", "type"："MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}}
-    {{"question": "题目正文7", "type"："MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}}
-    {{"question": "题目正文8", "type"："MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}}
-]
-"""
+    6. 返回严格的 JSON 格式，不要包含其他文字
+    7. JSON 格式：[
+        {{"question": "题目正文1", "type": "MCQ", "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
+        {{"question": "题目正文2", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
+        {{"question": "题目正文3", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
+        {{"question": "题目正文4", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
+        {{"question": "题目正文5", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
+        {{"question": "题目正文6", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
+        {{"question": "题目正文7", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
+        {{"question": "题目正文8", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}}
+    ]
+
+    【自检】
+    1. A、B、C、D四个答案是否都一样
+    2. 题目中是否包含英语的问题
+    """
 
     try:
         from langchain_core.messages import HumanMessage
+
         subject_prompt = math_prompt if subject == "数学" else english_prompt
         response = _llm.invoke([HumanMessage(content=subject_prompt)])
         result = response.content
@@ -260,18 +259,27 @@ english_prompt = f"""【角色设定】
         result = result.strip()
 
         data = json.loads(result)
-        question_data = {
-            "question": data["question"],
-            "options": data["options"],
-            "answer": data["answer"].upper().strip(),
-            "explanation": data.get("explanation", ""),
-        }
+        if not isinstance(data, list):
+            logger.warning("LLM did not return a list, got %s", type(data))
+            return None
+
+        questions = []
+        for item in data:
+            q = {
+                "question": item["question"],
+                "type": item.get("type", "MCQ"),
+                "answer": item["answer"].strip(),
+                "explanation": item.get("explanation", ""),
+            }
+            if "options" in item and item["options"]:
+                q["options"] = item["options"]
+            questions.append(q)
 
         # ---- 3. 写缓存 ----
-        _cache_set(cache_key, question_data)
-        return question_data
+        _cache_set(cache_key, questions)
+        return questions
     except Exception as e:
-        logger.warning(f"LangChain question generation failed: {e}")
+        logger.warning(f"LangChain question batch generation failed: {e}")
         return None
 
 
@@ -400,23 +408,46 @@ def _generate_questions(
 def generate_question(
     subject: str, grade: int, kp_id: int, difficulty: str, question_index: int = 0
 ) -> dict:
-    """生成一道题目。先尝试 LangChain，失败则使用本地题库。"""
+    """生成一道题目（用于重试错题）。先尝试 LangChain，失败则使用本地题库。"""
     from syllabus import get_knowledge_point
 
     kp = get_knowledge_point(subject, grade, kp_id)
     kp_name = kp["name"] if kp else ""
 
-    # 尝试 LangChain
-    result = _try_langchain_question(
-        subject, grade, kp_name, difficulty, question_index=question_index
-    )
-    if result:
-        return result
+    # 尝试 LangChain — 用 question_index 生成不同题目
+    result = _try_langchain_question_batch(subject, grade, kp_name, difficulty)
+    if result and question_index < len(result):
+        return result[question_index]
 
     # 回退到本地题库
     bank = _get_question_bank(subject, grade)
     if kp_id in bank and difficulty in bank[kp_id] and bank[kp_id][difficulty]:
         return random.choice(bank[kp_id][difficulty])
+    return {}
+
+
+def generate_question_batch(
+    subject: str, grade: int, kp_id: int, difficulty: str
+) -> list[dict]:
+    """生成 8 道题目。先尝试 LangChain，失败则使用本地题库。"""
+    from syllabus import get_knowledge_point
+
+    kp = get_knowledge_point(subject, grade, kp_id)
+    kp_name = kp["name"] if kp else ""
+
+    # 尝试 LangChain 批量生成
+    result = _try_langchain_question_batch(subject, grade, kp_name, difficulty)
+    if result:
+        return result
+
+    # 回退到本地题库（逐题随机选取）
+    bank = _get_question_bank(subject, grade)
+    questions = []
+    if kp_id in bank and difficulty in bank[kp_id] and bank[kp_id][difficulty]:
+        pool = bank[kp_id][difficulty]
+        for i in range(min(8, len(pool))):
+            questions.append(random.choice(pool))
+    return questions
 
 
 def evaluate_answer(
@@ -435,7 +466,20 @@ def evaluate_answer(
     kp = get_knowledge_point(subject, grade, kp_id)
     kp_name = kp["name"] if kp else str(kp_id)
 
-    # 尝试 LangChain 评估
+    # 应用题模式（无选项）：文本相似度比较
+    if not options or options == {}:
+        norm_answer = correct_answer.strip().lower()
+        norm_user = user_answer.strip().lower()
+        # 检查学生答案是否包含正确答案的关键数字/词
+        passed = norm_user == norm_answer or (
+            len(norm_answer) > 5 and norm_answer in norm_user
+        )
+        return {
+            "passed": passed,
+            "explanation": "回答正确！" if passed else f"参考答案：{correct_answer}",
+        }
+
+    # 选择题模式：尝试 LangChain 评估
     result = _try_langchain_evaluation(
         subject,
         grade,

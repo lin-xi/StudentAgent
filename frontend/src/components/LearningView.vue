@@ -10,21 +10,18 @@ const props = defineProps({
 })
 const emit = defineEmits(["update"])
 
-// ---- 批次状态 ----
-const questions = ref([])          // [{ id, question, options, answer, explanation, userAnswer, answered?, evaluation?, passed? }]
+const questions = ref([])
 const loading = ref(false)
 const error = ref("")
-const allChecked = ref(false)      // 是否已检查全部答案
+const allChecked = ref(false)
 
 const difficultyLabels = ["basic", "intermediate", "advanced"]
 const currentKP = computed(() => props.progress.knowledgePoints[props.progress.currentKP] || null)
 const currentDifficultyLabel = computed(() => difficultyLabels[props.progress.currentDifficulty])
 
-// 统计数据
 const answeredCount = computed(() => questions.value.filter((q) => q.answered).length)
 const passedCount = computed(() => questions.value.filter((q) => q.passed).length)
 const allPassed = computed(() => allChecked.value && passedCount.value === questions.value.length)
-const hasWrong = computed(() => allChecked.value && passedCount.value < questions.value.length)
 
 // ---- 获取一轮题目 ----
 async function fetchRound() {
@@ -41,12 +38,12 @@ async function fetchRound() {
       props.progress.grade,
       kp.id,
       currentDifficultyLabel.value,
-      QUESTIONS_PER_ROUND,
     )
     questions.value = raw.map((q, i) => ({
       id: i,
+      type: q.type || "MCQ",
       question: q.question,
-      options: q.options,
+      options: q.options || {},
       answer: q.answer,
       explanation: q.explanation || "",
       userAnswer: "",
@@ -62,12 +59,12 @@ async function fetchRound() {
   }
 }
 
-// ---- 回答某题 ----
-async function answerQuestion(qId, option) {
+// ---- 回答某题（MCQ：点选项；应用题：输入文本后点提交）----
+async function answerQuestion(qId, answer) {
   const q = questions.value.find((x) => x.id === qId)
   if (!q || q.answered) return
 
-  q.userAnswer = option
+  q.userAnswer = answer
   q.answered = true
   loading.value = true
 
@@ -78,25 +75,23 @@ async function answerQuestion(qId, option) {
       currentKP.value.id,
       currentDifficultyLabel.value,
       q.question,
-      q.options,
-      option,
+      q.type === "MCQ" ? q.options : {},
+      answer,
       q.answer,
     )
     q.evaluation = result
     q.passed = result.passed
   } catch {
-    // 后端不可用时本地判断
-    const passed = option.trim().toUpperCase() === q.answer.trim().toUpperCase()
+    const passed = answer.trim().toUpperCase() === q.answer.trim().toUpperCase()
     q.evaluation = {
       passed,
-      explanation: passed ? "回答正确！" : `回答错误。正确答案是 ${q.answer}。`,
+      explanation: passed ? "回答正确！" : `回答错误。参考答案：${q.answer}`,
     }
     q.passed = passed
   } finally {
     loading.value = false
   }
 
-  // 全部答完时自动检查
   if (answeredCount.value === questions.value.length) {
     allChecked.value = true
     if (allPassed.value) {
@@ -111,7 +106,7 @@ async function advanceDifficulty() {
   const kp = p.knowledgePoints[p.currentKP]
   const diff = difficultyLabels[p.currentDifficulty]
 
-  kp[diff] = true  // 标记当前难度通关
+  kp[diff] = true
 
   if (diff === "advanced") {
     p.completedKPCount++
@@ -139,28 +134,27 @@ async function retryWrong() {
 
   try {
     const results = await Promise.all(
-      wrong.map((q, i) =>
+      wrong.map((q) =>
         generateQuestion(
           props.progress.subject,
           props.progress.grade,
           currentKP.value.id,
           currentDifficultyLabel.value,
-          q.id,  // 用原题号作为 question_index 以获取不同题目
+          q.id,
         ),
       ),
     )
-    // 替换错题
-    for (const q of wrong) {
-      const newQ = results.shift()
+    for (let i = 0; i < wrong.length; i++) {
+      const newQ = results[i]
       if (newQ) {
-        q.question = newQ.question
-        q.options = newQ.options
-        q.answer = newQ.answer
-        q.explanation = newQ.explanation || ""
-        q.userAnswer = ""
-        q.answered = false
-        q.evaluation = null
-        q.passed = false
+        wrong[i].question = newQ.question
+        wrong[i].options = newQ.options || {}
+        wrong[i].answer = newQ.answer
+        wrong[i].explanation = newQ.explanation || ""
+        wrong[i].userAnswer = ""
+        wrong[i].answered = false
+        wrong[i].evaluation = null
+        wrong[i].passed = false
       }
     }
   } catch {
@@ -170,7 +164,7 @@ async function retryWrong() {
   }
 }
 
-// ---- 监听知识点/难度变化 ----
+// ---- 监听 ----
 watch(
   () => [props.progress.currentKP, props.progress.currentDifficulty],
   () => {
@@ -181,7 +175,7 @@ watch(
   { immediate: true },
 )
 
-// ---- 选项样式 ----
+// ---- 选项样式（MCQ） ----
 function optionClass(q, opt) {
   if (!q.answered) return {}
   const isCorrect = opt === q.answer
@@ -240,15 +234,20 @@ function optionClass(q, opt) {
           wrong: q.answered && !q.passed,
         }"
       >
+        <!-- 题号 + 题型标记 -->
         <div class="q-header">
           <span class="q-num">第 {{ q.id + 1 }} 题</span>
+          <span class="q-type" :class="q.type">
+            {{ q.type === "MCQ" ? "选择题" : "应用题" }}
+          </span>
           <span v-if="q.answered && q.passed" class="q-status correct">✓</span>
           <span v-else-if="q.answered && !q.passed" class="q-status wrong">✗</span>
         </div>
 
         <p class="q-text">{{ q.question }}</p>
 
-        <div class="q-options">
+        <!-- 选择题：选项按钮 -->
+        <div v-if="q.type === 'MCQ'" class="q-options">
           <button
             v-for="(text, key) in q.options"
             :key="key"
@@ -263,9 +262,27 @@ function optionClass(q, opt) {
           </button>
         </div>
 
+        <!-- 应用题：文本输入 -->
+        <div v-else class="q-input-area">
+          <textarea
+            v-if="!q.answered"
+            class="q-textarea"
+            :placeholder="'请输入你的答案...'"
+            rows="3"
+            @keydown.ctrl.enter="(e) => { if (e.target.value.trim()) answerQuestion(q.id, e.target.value.trim()) }"
+            @keydown.meta.enter="(e) => { if (e.target.value.trim()) answerQuestion(q.id, e.target.value.trim()) }"
+          ></textarea>
+          <div v-else class="q-answer-display">
+            <strong>你的答案：</strong>{{ q.userAnswer }}
+          </div>
+        </div>
+
         <!-- 单题反馈 -->
         <div v-if="q.answered && q.evaluation" class="q-feedback" :class="{ correct: q.passed, wrong: !q.passed }">
-          {{ q.evaluation.explanation }}
+          <div v-if="q.type === 'problem-solving' && !q.passed" class="q-ref-answer">
+            <strong>参考答案：</strong>{{ q.answer }}
+          </div>
+          <div>{{ q.evaluation.explanation }}</div>
         </div>
       </div>
     </div>
@@ -291,22 +308,13 @@ function optionClass(q, opt) {
 </template>
 
 <style scoped>
-.learning-view {
-  padding: 0 0 40px;
-}
+.learning-view { padding: 0 0 40px; }
 
-/* 状态 */
 .learning-status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 20px;
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;
 }
 .status-badge {
-  padding: 4px 14px;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  padding: 4px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;
 }
 .status-badge.subject { background: #dbeafe; color: #1d4ed8; }
 .status-badge.grade { background: #f3e8ff; color: #7c3aed; }
@@ -315,87 +323,90 @@ function optionClass(q, opt) {
 .status-badge.difficulty.advanced { background: #fecaca; color: #991b1b; }
 .status-badge.count { background: #e0f2fe; color: #0369a1; }
 
-/* 加载 */
 .loading-area {
   display: flex; flex-direction: column; align-items: center;
   gap: 12px; padding: 48px 0; color: var(--text-secondary);
 }
 .spinner {
   width: 40px; height: 40px;
-  border: 4px solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  border: 4px solid var(--border); border-top-color: var(--primary);
+  border-radius: 50%; animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .error-area { text-align: center; padding: 40px 20px; color: var(--danger); }
 .error-area .btn { margin-top: 16px; }
 
-/* 题目卡片列表 */
-.question-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
+.question-list { display: flex; flex-direction: column; gap: 16px; }
 
 .q-card {
-  background: var(--card-bg);
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  transition: border-color 0.3s;
+  background: var(--card-bg); border: 2px solid var(--border);
+  border-radius: var(--radius); padding: 20px; transition: border-color 0.3s;
 }
 .q-card.correct { border-color: var(--success); background: #f0fdf4; }
 .q-card.wrong { border-color: var(--danger); background: #fef2f2; }
 
 .q-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
 }
 .q-num { font-weight: 700; font-size: 0.85rem; color: var(--primary); }
-.q-status { font-size: 1.2rem; font-weight: 700; }
+.q-type {
+  font-size: 0.75rem; font-weight: 600; padding: 2px 8px;
+  border-radius: 10px; background: #e2e8f0; color: #475569;
+}
+.q-type.MCQ { background: #dbeafe; color: #1d4ed8; }
+.q-type.problem-solving { background: #fef3c7; color: #92400e; }
+.q-status { font-size: 1.2rem; font-weight: 700; margin-left: auto; }
 .q-status.correct { color: var(--success); }
 .q-status.wrong { color: var(--danger); }
 
 .q-text { font-size: 1rem; line-height: 1.7; margin-bottom: 14px; }
 
+/* MCQ 选项 */
 .q-options { display: flex; flex-direction: column; gap: 8px; }
-
 .q-opt {
   display: flex; align-items: center; gap: 10px;
-  padding: 12px 14px;
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
-  background: #fafafa;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: left; font-size: 0.9rem;
+  padding: 12px 14px; border: 2px solid var(--border);
+  border-radius: var(--radius); background: #fafafa;
+  cursor: pointer; transition: all 0.2s; text-align: left; font-size: 0.9rem;
 }
 .q-opt:not(:disabled):hover { border-color: var(--primary); background: #eef2ff; }
 .q-opt:disabled { cursor: default; }
 .q-opt.correct { border-color: var(--success); background: #f0fdf4; }
 .q-opt.wrong { border-color: var(--danger); background: #fef2f2; }
-
 .opt-key {
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; border-radius: 50%;
-  background: var(--border); font-weight: 700; font-size: 0.8rem;
-  flex-shrink: 0;
+  background: var(--border); font-weight: 700; font-size: 0.8rem; flex-shrink: 0;
 }
 .q-opt.correct .opt-key { background: var(--success); color: #fff; }
 .opt-text { flex: 1; }
 .opt-mark { font-size: 1rem; font-weight: 700; color: var(--success); }
 
-/* 单题反馈 */
+/* 应用题输入 */
+.q-input-area { margin-bottom: 4px; }
+.q-textarea {
+  width: 100%; padding: 12px; border: 2px solid var(--border);
+  border-radius: var(--radius); font-size: 0.95rem; font-family: inherit;
+  resize: vertical; transition: border-color 0.2s;
+}
+.q-textarea:focus { outline: none; border-color: var(--primary); }
+.q-answer-display {
+  padding: 10px 14px; background: #f8fafc; border-radius: var(--radius);
+  font-size: 0.9rem;
+}
+
+/* 反馈 */
 .q-feedback {
-  margin-top: 12px; padding: 10px 14px;
-  border-radius: var(--radius);
+  margin-top: 12px; padding: 10px 14px; border-radius: var(--radius);
   font-size: 0.85rem; line-height: 1.5;
 }
 .q-feedback.correct { background: #f0fdf4; color: #166534; border: 1px solid var(--success); }
 .q-feedback.wrong { background: #fef2f2; color: #991b1b; border: 1px solid var(--danger); }
+.q-ref-answer {
+  margin-bottom: 6px; padding-bottom: 6px;
+  border-bottom: 1px dashed rgba(153,27,27,0.2);
+}
 
-/* 全部通关 */
 .complete-banner {
   text-align: center; padding: 24px;
   background: #f0fdf4; border: 2px solid var(--success);
@@ -403,7 +414,6 @@ function optionClass(q, opt) {
   font-weight: 700; color: #166534; margin-top: 20px;
 }
 
-/* 底部总结 */
 .round-summary {
   position: sticky; bottom: 0; margin-top: 20px;
   padding: 16px 20px; border-radius: var(--radius);
