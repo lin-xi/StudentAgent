@@ -1,0 +1,23 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      claude-code:
+        specifier: ^1.0.0
+        version: 1.0.0
+
+packages:
+
+  claude-code@1.0.0:
+    resolution: {integrity: sha512-x5z3ZlQBRcd3fX5MtiC19kzVxonaY6/Ligbjedp21TlQ/m7FuiQHNsegiZVmOoY6a5BmqdMYTUI3dRj3RtnlGQ==}
+    hasBin: true
+
+snapshots:
+
+  claude-code@1.0.0: {}
