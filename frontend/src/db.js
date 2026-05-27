@@ -15,6 +15,9 @@ export const DIFFICULTY_LABELS = {
   advanced: '高阶',
 }
 
+// 每轮批次的题目数量
+export const QUESTIONS_PER_ROUND = 8
+
 const dbPromise = openDB(DB_NAME, DB_VERSION, {
   upgrade(db) {
     if (!db.objectStoreNames.contains(STORE_NAME)) {

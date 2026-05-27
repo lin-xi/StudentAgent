@@ -19,11 +19,19 @@ export async function fetchSyllabus(subject, grade) {
   return request(`/syllabus?subject=${encodeURIComponent(subject)}&grade=${encodeURIComponent(grade)}`)
 }
 
-export async function generateQuestion(subject, grade, kpId, difficulty) {
+export async function generateQuestion(subject, grade, kpId, difficulty, questionIndex = 0) {
   return request('/generate-question', {
     method: 'POST',
-    body: JSON.stringify({ subject, grade, kp_id: kpId, difficulty }),
+    body: JSON.stringify({ subject, grade, kp_id: kpId, difficulty, question_index: questionIndex }),
   })
+}
+
+export async function generateQuestionBatch(subject, grade, kpId, difficulty, count) {
+  const promises = []
+  for (let i = 0; i < count; i++) {
+    promises.push(generateQuestion(subject, grade, kpId, difficulty, i))
+  }
+  return Promise.all(promises)
 }
 
 export async function evaluateAnswer(subject, grade, kpId, difficulty, question, options, userAnswer, correctAnswer) {

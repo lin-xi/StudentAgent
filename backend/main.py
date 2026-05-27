@@ -34,6 +34,7 @@ class GenerateQuestionRequest(BaseModel):
     grade: int = Field(..., ge=1, le=12, description="年级")
     kp_id: int = Field(..., ge=0, description="知识点 ID")
     difficulty: str = Field(..., pattern="^(basic|intermediate|advanced)$")
+    question_index: int = Field(0, ge=0, le=20, description="同一知识点难度下的题号，用于生成不同题目")
 
 class EvaluateRequest(BaseModel):
     subject: str
@@ -62,7 +63,10 @@ def get_syllabus_api(subject: str, grade: int):
 def api_generate_question(req: GenerateQuestionRequest):
     """生成一道题目。"""
     try:
-        question = generate_question(req.subject, req.grade, req.kp_id, req.difficulty)
+        question = generate_question(
+            req.subject, req.grade, req.kp_id, req.difficulty,
+            question_index=req.question_index,
+        )
         return question
     except Exception as e:
         logger.exception("Error generating question")
