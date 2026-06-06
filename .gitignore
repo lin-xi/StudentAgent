@@ -1,5 +1,6 @@
 .env
 node_modules/
+claude.sh
 .claude/
 .claude-flow
 .mcp.json

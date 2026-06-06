@@ -14,7 +14,7 @@ sleep 2
 
 echo "🚀 启动前端 (Vite)..."
 cd "$SCRIPT_DIR/frontend"
-npx vite --host 0.0.0.0 &
+vite dev --host 0.0.0.0 &
 FRONTEND_PID=$!
 echo "  前端 PID: $FRONTEND_PID (http://localhost:5173)"
 
@@ -24,7 +24,7 @@ echo "   前端: http://localhost:5173"
 echo "   后端: http://localhost:8000"
 echo "   API 文档: http://localhost:8000/docs"
 echo ""
-echo "按 Ctrl+C 停止所有服务"
+#echo "按 Ctrl+C 停止所有服务"
 
-trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" SIGINT SIGTERM
-wait
+#trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" SIGINT SIGTERM
+#wait

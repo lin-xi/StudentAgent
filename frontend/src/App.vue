@@ -16,7 +16,7 @@ import LearningView from "./components/LearningView.vue";
 const view = ref("loading"); // loading | welcome | subject | grade | learning | complete
 const progress = ref(null);
 const levelInfo = ref(null);
-const subjects = ["数学", "英语"];
+const subjects = ["数学", "英语", "软考"];
 const grades = [4, 5, 6];
 
 // 学习流程中的临时选择
@@ -120,6 +120,14 @@ function handleBackToStart() {
         <header class="app-header">
             <h1 class="app-title">📚 智能学习助手</h1>
             <p class="app-subtitle">AI 驱动的个性化学习平台</p>
+            <button
+                v-if="view !== 'loading' && view !== 'welcome'"
+                class="header-reset-btn"
+                title="清除学习进度"
+                @click="showConfirmReset = true"
+            >
+                🗑
+            </button>
         </header>
 
         <main class="app-main">
@@ -258,6 +266,7 @@ body {
 .app-header {
     text-align: center;
     margin-bottom: 32px;
+    position: relative;
 }
 
 .app-title {
@@ -270,6 +279,26 @@ body {
     color: var(--text-secondary);
     font-size: 0.95rem;
     margin-top: 4px;
+}
+
+.header-reset-btn {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    opacity: 0.5;
+    transition: opacity 0.2s, background 0.2s;
+    line-height: 1;
+}
+.header-reset-btn:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.05);
 }
 
 .app-main {

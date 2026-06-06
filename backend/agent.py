@@ -156,22 +156,28 @@ def _try_langchain_question_batch(
     3. 每道题必须包含
         - 题目正文（语言生动，避免"小明小红"刻板情境）
         - 答案，详细的解题步骤
-        - 金牌批注：
+        - 教师批注和解析：
+            * 这道考察的知识点的解析
             * 每个错误选项对应的真实思维路径
             * 这道题诊断的具体漏洞
             * 一句话点醒话术
 
     4. 返回严格的 JSON 格式，不要包含其他文字
     5. JSON 格式：[
-        {{"question": "题目正文1", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
-        {{"question": "题目正文2", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
-        {{"question": "题目正文3", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
-        {{"question": "题目正文4", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
-        {{"question": "题目正文5", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
-        {{"question": "题目正文6", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
-        {{"question": "题目正文7", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}},
-        {{"question": "题目正文8", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和简短解析"}}
+        {{"question": "题目正文1", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文2", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文3", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文4", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文5", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文6", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文7", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文8", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}}
     ]
+
+     【自检】
+     请你在生成题目后，逐条核对以下项目并输出结果：
+     1. 解析是否分别说明了正确与错误的原因？若缺少任一项，请补充。
+     2. 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
     """
 
     english_prompt = f"""
@@ -184,9 +190,9 @@ def _try_langchain_question_batch(
     【出题铁律 - 逐条执行】
 
     1. 学情诊断前置（先输出这部分）
-        - "{kp_name}"中国小学生的3个母语负迁移错误
-        - 学习该知识点前，学生必须已掌握的2个前置知识
-        - 该知识点在课标中的能力层级要求（一级/二级/三级）
+        - 先分析{kp_name}知识点学生的3个典型认知误区
+        - 列出该年级学生已具备的前置知识
+        - 说明本题要检测的核心能力（知识记忆/理解应用/迁移创新）
 
     2. 题目结构（共8题，全部为单项选择，每题4个选项）
         □ 形式识别层（2题）：考察"{kp_name}"的形式本身
@@ -210,7 +216,8 @@ def _try_langchain_question_batch(
     - 题目正文（语言生动，真实场景：课堂/家庭/操场/食堂/春游）
     - 选项A/B/C/D（正确选项位置随机）
     - 答案，A/B/C/D中的正确选项字母
-    - 金牌批注：
+    - 教师批注和解析：
+            * 这道考察的知识点的解析
             * 每个错误选项对应的真实思维路径
             * 这道题诊断的具体漏洞
             * 一句话点醒话术
@@ -229,25 +236,88 @@ def _try_langchain_question_batch(
 
     6. 返回严格的 JSON 格式，不要包含其他文字
     7. JSON 格式：[
-        {{"question": "题目正文1", "type": "MCQ", "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
-        {{"question": "题目正文2", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
-        {{"question": "题目正文3", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
-        {{"question": "题目正文4", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
-        {{"question": "题目正文5", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
-        {{"question": "题目正文6", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
-        {{"question": "题目正文7", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}},
-        {{"question": "题目正文8", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "金牌批注和简短解析"}}
+        {{"question": "题目正文1", "type": "MCQ", "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文2", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文3", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文4", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文5", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文6", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文7", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文8", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}}
     ]
 
     【自检】
+    请你在生成题目后，逐条核对以下项目并输出结果：
     1. A、B、C、D四个答案是否都一样
     2. 题目中是否包含英语的问题
+    3. 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
+    """
+
+    ruankao_prompt = f"""
+    【角色设定】
+    你是一位拥有多年教龄的软考【高级系统架构师】特级教师，精通考试命题规律、考点分布及常见学生误区。
+
+    【任务】
+    请为软考【高级系统架构师】的知识点【{kp_name}】设计一套{difficulty_label}难度的选择题诊断练习。
+
+    【出题铁律 - 逐条执行】
+    1. 学情诊断前置（先输出这部分）
+        - 先分析{kp_name}知识点学生的3个典型认知误区
+        - 列出该年级学生已具备的前置知识
+        - 说明本题要检测的核心能力
+
+    2. 题目结构（共8题，全部为6单项选择，每题4个选项，2个应用题。）
+        □ 考察"{kp_name}"核心概念、定义、区分度高的基础知识，3道选择题
+        □ 考察"{kp_name}"理解应用、简单场景分析、易混淆点对比，3道选择题
+        □ 考查"{kp_name}"综合分析、架构选型决策、多知识点融合、隐含陷阱，2道应用题
+
+    3. 题干要求：
+       - 题干必须自包含、无歧义。
+
+    4. 选项设计：
+        - 每个题目提供 A、B、C、D 四个选项。
+        - 正确项必须唯一。
+        - 干扰项应源于常见错误理解或真实考试中出现的混淆点，不能明显荒谬。
+        - 选项长度尽量保持一致，不出现“以上都对/都错”等绝对化表述（除非考点就是这种逻辑）。
+
+    5. 教师批注和解析：
+        - 每题后给出教师批注和解析。
+        - 批注和解析必须包含：
+            - 这道考察的知识点的解析
+            - 为什么正确（对应哪个原理/教材原文/架构原则）
+            - 为什么错误（指出每个错误选项的错因或典型误区）
+
+    6. 返回严格的 JSON 格式，不要包含其他文字
+    7. JSON 格式：[
+        {{"question": "题目正文1", "type": "MCQ", "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文2", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文3", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文4", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文5", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文6", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文7", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+        {{"question": "题目正文8", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}}
+    ]
+
+    【自检】
+    请你在生成题目后，逐条核对以下项目并输出结果：
+    □ 每道题题干是否包含业务场景？若没有，请修改。
+    □ 解析是否分别说明了正确与错误的原因？若缺少任一项，请补充。
+    □ 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
+
     """
 
     try:
         from langchain_core.messages import HumanMessage
 
-        subject_prompt = math_prompt if subject == "数学" else english_prompt
+        subject_prompt = ""
+        if subject == "数学":
+            subject_prompt = math_prompt
+        elif subject == "英语":
+            subject_prompt = english_prompt
+        elif subject == "软考":
+            subject_prompt = ruankao_prompt
+
         response = _llm.invoke([HumanMessage(content=subject_prompt)])
         result = response.content
 
@@ -322,7 +392,11 @@ def _try_langchain_evaluation(
 标准答案：{correct_answer}
 学生答案：{user_answer}
 
-请判断学生的答案是否正确（考虑答案字母大小写），并给出简短评价。
+请判断学生的答案是否正确（考虑答案字母大小写），并给出简短解析。
+解析必须包含：
+- 当前考察的知识点的简介
+- 为什么正确（对应哪个原理/教材原文/架构原则）
+- 为什么错误（指出每个错误选项的错因或典型误区）
 返回严格的 JSON 格式：{{"correct": true/false, "explanation": "评价文字"}}
 """
 
@@ -468,36 +542,26 @@ def evaluate_answer(
 
     # 应用题模式（无选项）：文本相似度比较
     if not options or options == {}:
-        norm_answer = correct_answer.strip().lower()
-        norm_user = user_answer.strip().lower()
-        # 检查学生答案是否包含正确答案的关键数字/词
-        passed = norm_user == norm_answer or (
-            len(norm_answer) > 5 and norm_answer in norm_user
+        # 应用题模式（无选项）
+        # 选择题模式：尝试 LangChain 评估
+        result = _try_langchain_evaluation(
+            subject,
+            grade,
+            kp_name,
+            difficulty,
+            question,
+            options,
+            user_answer,
+            correct_answer,
         )
+        if result:
+            return result
+
+    else:
+        # 本地评估：比较答案字母（忽略大小写和空白）
+        passed = user_answer.strip().upper() == correct_answer.strip().upper()
+
         return {
             "passed": passed,
             "explanation": "回答正确！" if passed else f"参考答案：{correct_answer}",
         }
-
-    # 选择题模式：尝试 LangChain 评估
-    result = _try_langchain_evaluation(
-        subject,
-        grade,
-        kp_name,
-        difficulty,
-        question,
-        options,
-        user_answer,
-        correct_answer,
-    )
-    if result:
-        return result
-
-    # 本地评估：比较答案字母（忽略大小写和空白）
-    passed = user_answer.strip().upper() == correct_answer.strip().upper()
-    return {
-        "passed": passed,
-        "explanation": "回答正确！"
-        if passed
-        else f"回答错误。正确答案是 {correct_answer}。",
-    }

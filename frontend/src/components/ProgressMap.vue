@@ -150,14 +150,18 @@ function getDifficultyLabel(index) {
 
 /* 关卡地图 */
 .kp-map {
+    width: 688px;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 0;
+    overflow: scroll;
 }
 
 .kp-node {
     display: flex;
+    flex-direction: column;
     align-items: center;
+    width: 200px;
     gap: 15px;
     padding: 14px 16px;
     background: var(--card-bg);
