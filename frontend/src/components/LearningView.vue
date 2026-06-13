@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch } from "vue";
-import { saveProgress, QUESTIONS_PER_ROUND } from "../db.js";
+import { saveProgress, QUESTIONS_PER_ROUND, recordCheckIn, markKPCompleted } from "../db.js";
 import {
     generateQuestion,
     generateQuestionBatch,
@@ -12,7 +12,7 @@ const props = defineProps({
     progress: { type: Object, required: true },
     levelInfo: { type: Object, default: null },
 });
-const emit = defineEmits(["update"]);
+const emit = defineEmits(["update", "backToHome"]);
 
 const questions = ref([]);
 const loading = ref(false);
@@ -126,13 +126,21 @@ async function advanceDifficulty() {
     kp[diff] = true;
 
     if (diff === "advanced") {
+        // 知识点完成，记录日期
+        await markKPCompleted(p, p.currentKP);
         p.completedKPCount++;
+
+        // 记录打卡：完成一个 level
+        await recordCheckIn(p, questions.value.length, 1);
+
         if (p.completedKPCount >= p.knowledgePoints.length) {
             p.overallComplete = true;
         } else {
             p.currentKP++;
             p.currentDifficulty = 0;
         }
+        // 返回首页
+        emit("backToHome");
     } else {
         p.currentDifficulty++;
     }

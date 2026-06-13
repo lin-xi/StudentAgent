@@ -6,14 +6,16 @@ import {
     saveProgress,
     createInitialProgress,
     getLevelTitle,
+    resetKPProgress,
 } from "./db.js";
 import { fetchSyllabus, generateQuestion, evaluateAnswer } from "./api.js";
 import WelcomeScreen from "./components/WelcomeScreen.vue";
 import SubjectSelect from "./components/SubjectSelect.vue";
 import GradeSelect from "./components/GradeSelect.vue";
 import LearningView from "./components/LearningView.vue";
+import HomeView from "./components/HomeView.vue";
 
-const view = ref("loading"); // loading | welcome | subject | grade | learning | complete
+const view = ref("loading"); // loading | welcome | subject | grade | home | learning | complete
 const progress = ref(null);
 const levelInfo = ref(null);
 const subjects = ["数学", "英语", "软考"];
@@ -29,7 +31,7 @@ onMounted(async () => {
     if (saved) {
         progress.value = saved;
         levelInfo.value = getLevelTitle(saved.completedKPCount);
-        view.value = saved.overallComplete ? "complete" : "learning";
+        view.value = saved.overallComplete ? "complete" : "home";  // 默认进入首页
     } else {
         view.value = "welcome";
     }
@@ -71,7 +73,7 @@ async function startLearning() {
         );
         levelInfo.value = getLevelTitle(0);
         await saveProgress(progress.value);
-        view.value = "learning";
+        view.value = "home";  // 完成后进入首页
     } catch (e) {
         console.error("获取大纲失败:", e);
         // 降级：使用默认知识点
@@ -87,7 +89,7 @@ async function startLearning() {
         );
         levelInfo.value = getLevelTitle(0);
         await saveProgress(progress.value);
-        view.value = "learning";
+        view.value = "home";  // 完成后进入首页
     }
 }
 
@@ -101,6 +103,10 @@ async function handleProgressUpdate(updatedProgress) {
     }
 }
 
+function handleBackToHome() {
+    view.value = "home";
+}
+
 async function handleReset() {
     await clearProgress();
     progress.value = null;
@@ -112,6 +118,17 @@ async function handleReset() {
 
 function handleBackToStart() {
     view.value = "welcome";
+}
+
+async function handleStartLearning() {
+    view.value = "learning";
+}
+
+async function handleRelearnOutline(index) {
+    const p = await resetKPProgress(progress.value, index);
+    progress.value = p;
+    levelInfo.value = getLevelTitle(p.completedKPCount);
+    view.value = "learning";
 }
 </script>
 
@@ -164,12 +181,22 @@ function handleBackToStart() {
                 "
             />
 
+            <!-- 首页 -->
+            <HomeView
+                v-else-if="view === 'home'"
+                :progress="progress"
+                :level-info="levelInfo"
+                @startLearning="handleStartLearning"
+                @relearnOutline="handleRelearnOutline"
+            />
+
             <!-- 学习主界面 -->
             <LearningView
                 v-else-if="view === 'learning'"
                 :progress="progress"
                 :level-info="levelInfo"
                 @update="handleProgressUpdate"
+                @backToHome="handleBackToHome"
             />
 
             <!-- 全部通关 -->

@@ -1,4 +1,5 @@
 <script setup>
+import { ref, computed, watch, onMounted } from "vue";
 import { DIFFICULTY_LABELS } from "../db.js";
 
 const props = defineProps({
@@ -7,6 +8,8 @@ const props = defineProps({
     currentDifficulty: { type: Number, required: true },
     levelInfo: { type: Object, default: null },
 });
+
+const scrollContainer = ref(null);
 
 function getKPStatus(kp) {
     const completed = kp.basic && kp.intermediate && kp.advanced;
@@ -26,6 +29,16 @@ function getDifficultyLabel(index) {
         DIFFICULTY_LABELS[["basic", "intermediate", "advanced"][index]] || ""
     );
 }
+
+// 自动滚动到当前知识点
+watch(() => props.currentKP, (newVal) => {
+    if (scrollContainer.value) {
+        const node = scrollContainer.value.children[newVal];
+        if (node) {
+            node.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        }
+    }
+}, { immediate: true });
 </script>
 
 <template>
@@ -50,7 +63,7 @@ function getDifficultyLabel(index) {
         </div>
 
         <!-- 关卡地图 -->
-        <div class="kp-map">
+        <div class="kp-map" ref="scrollContainer">
             <div
                 v-for="(kp, idx) in knowledgePoints"
                 :key="kp.id"
@@ -68,10 +81,11 @@ function getDifficultyLabel(index) {
                     <span v-else class="badge-icon">🔒</span>
                 </div>
                 <div class="kp-info">
+                    <div class="kp-id">#{{ idx + 1 }}</div>
                     <div class="kp-name">{{ kp.name }}</div>
                     <div class="kp-difficulties">
                         <span
-                            v-for="diff in [
+                            v-for="(diff, diffIdx) in [
                                 'basic',
                                 'intermediate',
                                 'advanced',
@@ -89,6 +103,10 @@ function getDifficultyLabel(index) {
                             }"
                             :title="DIFFICULTY_LABELS[diff]"
                         ></span>
+                    </div>
+                    <!-- 完成日期 -->
+                    <div v-if="getKPStatus(kp) === 'completed' && kp.completedDate" class="completed-date">
+                        {{ kp.completedDate }}
                     </div>
                 </div>
                 <div v-if="isActive(kp)" class="current-diff-label">
@@ -196,6 +214,26 @@ function getDifficultyLabel(index) {
 .kp-name {
     font-weight: 600;
     font-size: 0.95rem;
+}
+
+.kp-id {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: rgba(0, 0, 0, 0.05);
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-bottom: 4px;
+}
+
+.completed-date {
+    font-size: 0.65rem;
+    color: var(--success);
+    font-weight: 600;
+    margin-top: 4px;
+    padding: 2px 6px;
+    background: #f0fdf4;
+    border-radius: 4px;
 }
 
 .kp-difficulties {

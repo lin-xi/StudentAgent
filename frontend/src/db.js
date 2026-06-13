@@ -5,7 +5,7 @@
 import { openDB } from 'idb'
 
 const DB_NAME = 'LearningApp'
-const DB_VERSION = 1
+const DB_VERSION = 2  // 升级为 v2，增加打卡和完成日期支持
 const STORE_NAME = 'progress'
 
 export const DIFFICULTIES = ['basic', 'intermediate', 'advanced']
@@ -19,9 +19,30 @@ export const DIFFICULTY_LABELS = {
 export const QUESTIONS_PER_ROUND = 8
 
 const dbPromise = openDB(DB_NAME, DB_VERSION, {
-  upgrade(db) {
+  async upgrade(db, oldVersion, newVersion, transaction) {
     if (!db.objectStoreNames.contains(STORE_NAME)) {
       db.createObjectStore(STORE_NAME, { keyPath: 'id' })
+    }
+    // v2: 增加打卡记录和完成日期字段
+    if (oldVersion < 2) {
+      const store = transaction.objectStore(STORE_NAME)
+      const allData = await store.getAll()
+      for (const data of allData) {
+        // 迁移 knowledgePoints: 增加 completedDate 字段
+        if (data.knowledgePoints) {
+          data.knowledgePoints = data.knowledgePoints.map(kp => ({
+            ...kp,
+            completedDate: kp.completedDate || null,
+          }))
+        }
+        // 迁移：增加打卡相关字段
+        if (!data.checkInRecords) data.checkInRecords = {}
+        if (!data.currentStreak) data.currentStreak = 0
+        if (!data.maxStreak) data.maxStreak = 0
+        if (!data.lastCheckInDate) data.lastCheckInDate = null
+
+        await store.put(data)
+      }
     }
   },
 })
@@ -37,6 +58,7 @@ export function createInitialProgress(subject, grade, knowledgePoints) {
       basic: false,
       intermediate: false,
       advanced: false,
+      completedDate: null,  // 知识点完成日期
     })),
     currentKP: 0,
     currentDifficulty: 0, // 0=basic, 1=intermediate, 2=advanced
@@ -44,6 +66,11 @@ export function createInitialProgress(subject, grade, knowledgePoints) {
     overallComplete: false,
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    // 打卡记录
+    checkInRecords: {},  // { "2026-06-13": { count: 8, levelCompleted: 1 } }
+    currentStreak: 0,
+    maxStreak: 0,
+    lastCheckInDate: null,
   }
 }
 
@@ -57,7 +84,27 @@ export async function saveProgress(progress) {
 
 export async function loadProgress() {
   const db = await dbPromise
-  return (await db.get(STORE_NAME, 'userProgress')) || null
+  const data = await db.get(STORE_NAME, 'userProgress')
+  if (!data) return null
+
+  // 数据迁移：补全旧版本缺失的字段
+  const migrated = { ...data }
+
+  // v2 字段迁移
+  if (!migrated.checkInRecords) migrated.checkInRecords = {}
+  if (!migrated.currentStreak) migrated.currentStreak = 0
+  if (!migrated.maxStreak) migrated.maxStreak = 0
+  if (!migrated.lastCheckInDate) migrated.lastCheckInDate = null
+
+  // knowledgePoints 增加 completedDate
+  if (migrated.knowledgePoints) {
+    migrated.knowledgePoints = migrated.knowledgePoints.map(kp => ({
+      ...kp,
+      completedDate: kp.completedDate || null,
+    }))
+  }
+
+  return migrated
 }
 
 export async function clearProgress() {
@@ -100,4 +147,85 @@ export function getLevelTitle(completedCount) {
     : completedCount > 0 ? 100 : 0
 
   return { ...current, next, nextCount, progressPercent: Math.min(100, Math.max(0, progress)) }
+}
+
+// 获取当前日期字符串 YYYY-MM-DD
+export function getTodayStr() {
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+// 记录打卡
+export async function recordCheckIn(progress, countToday, levelCompletedToday = 0) {
+  const today = getTodayStr()
+  const p = JSON.parse(JSON.stringify(progress))
+
+  if (!p.checkInRecords) p.checkInRecords = {}
+
+  // 更新今日记录
+  const prev = p.checkInRecords[today] || { count: 0, levelCompleted: 0 }
+  p.checkInRecords[today] = {
+    count: Math.max(prev.count, countToday),
+    levelCompleted: prev.levelCompleted + levelCompletedToday,
+  }
+
+  // 计算连续打卡
+  if (p.lastCheckInDate !== today) {
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
+
+    if (p.lastCheckInDate === yesterdayStr) {
+      p.currentStreak = (p.currentStreak || 0) + 1
+    } else {
+      p.currentStreak = 1
+    }
+    p.maxStreak = Math.max(p.maxStreak, p.currentStreak)
+    p.lastCheckInDate = today
+  }
+
+  await saveProgress(p)
+  return p
+}
+
+// 标记知识点完成
+export async function markKPCompleted(progress, kpIndex) {
+  const p = JSON.parse(JSON.stringify(progress))
+  const today = getTodayStr()
+  p.knowledgePoints[kpIndex].completedDate = today
+  await saveProgress(p)
+  return p
+}
+
+// 重置知识点进度（用于重新学习）
+export async function resetKPProgress(progress, kpIndex) {
+  const p = JSON.parse(JSON.stringify(progress))
+  const kp = p.knowledgePoints[kpIndex]
+  kp.basic = false
+  kp.intermediate = false
+  kp.advanced = false
+  kp.completedDate = null
+  p.currentKP = kpIndex
+  p.currentDifficulty = 0
+  p.overallComplete = false
+  await saveProgress(p)
+  return p
+}
+
+// 获取月份打卡数据
+export function getMonthData(checkInRecords, year, month) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const records = []
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    records.push(checkInRecords[dateStr] || { count: 0, levelCompleted: 0 })
+  }
+  return records
+}
+
+// 计算月份总完成 level 数
+export function getMonthTotalLevel(checkInRecords, year, month) {
+  const records = getMonthData(checkInRecords, year, month)
+  return records.reduce((sum, r) => sum + (r.levelCompleted || 0), 0)
 }
