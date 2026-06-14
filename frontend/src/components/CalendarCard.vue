@@ -34,6 +34,11 @@ function getCheckInClass(record) {
   return 'empty'
 }
 
+// 判断是否是今天
+function isTodayDay(idx) {
+  return idx === today.getDate() - 1
+}
+
 const monthLabels = [
   '一月', '二月', '三月', '四月', '五月', '六月',
   '七月', '八月', '九月', '十月', '十一月', '十二月'
@@ -76,11 +81,17 @@ const monthLabels = [
         v-for="(record, idx) in monthData"
         :key="idx"
         class="day-cell"
-        :class="[getCheckInClass(record), { isToday: idx === today.getDate() - 1 }]"
+        :class="[
+          getCheckInClass(record),
+          { isToday: isTodayDay(idx) }
+        ]"
       >
         <span class="day-num">{{ idx + 1 }}</span>
         <span class="day-count" v-if="record.count > 0">
           {{ record.count }}题
+        </span>
+        <span class="today-mark" v-if="isTodayDay(idx) && record.count === 0">
+          今天
         </span>
       </div>
     </div>
@@ -179,6 +190,26 @@ const monthLabels = [
 
 .day-cell.isToday {
   border: 2px solid var(--primary);
+  position: relative;
+}
+
+.day-cell.isToday.empty::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  background: var(--primary);
+  border-radius: 50%;
+}
+
+.today-mark {
+  font-size: 0.55rem;
+  color: var(--primary);
+  font-weight: 600;
+  margin-top: 1px;
 }
 
 .day-num {

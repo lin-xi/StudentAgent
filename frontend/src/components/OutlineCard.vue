@@ -47,6 +47,10 @@ function handleClick(kp, index) {
         <span class="kp-stats" v-else>
           0/24
         </span>
+        <!-- 完成日期 -->
+        <span class="kp-completed-date" v-if="kp.completedDate">
+          {{ kp.completedDate }}
+        </span>
       </div>
     </div>
   </div>
@@ -170,5 +174,15 @@ function handleClick(kp, index) {
 
 .high-wrong .kp-stats {
   color: #dc2626;
+}
+
+.kp-completed-date {
+  font-size: 0.6rem;
+  color: var(--success);
+  font-weight: 600;
+  background: #f0fdf4;
+  padding: 2px 4px;
+  border-radius: 4px;
+  margin-top: 2px;
 }
 </style>

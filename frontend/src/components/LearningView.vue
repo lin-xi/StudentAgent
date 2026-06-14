@@ -119,7 +119,7 @@ async function answerQuestion(qId, answer) {
 
 // ---- 晋级 ----
 async function advanceDifficulty() {
-    const p = { ...props.progress };
+    const p = JSON.parse(JSON.stringify(props.progress));
     const kp = p.knowledgePoints[p.currentKP];
     const diff = difficultyLabels[p.currentDifficulty];
 
@@ -127,28 +127,43 @@ async function advanceDifficulty() {
 
     if (diff === "advanced") {
         // 知识点完成，记录日期
-        await markKPCompleted(p, p.currentKP);
-        p.completedKPCount++;
+        const today = new Date()
+        const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+        kp.completedDate = dateStr
+
+        p.completedKPCount++
 
         // 记录打卡：完成一个 level
-        await recordCheckIn(p, questions.value.length, 1);
+        if (!p.checkInRecords) p.checkInRecords = {}
+        const todayKey = dateStr
+        const prev = p.checkInRecords[todayKey] || { count: 0, levelCompleted: 0 }
+        p.checkInRecords[todayKey] = {
+            count: Math.max(prev.count, questions.value.length),
+            levelCompleted: prev.levelCompleted + 1,
+        }
 
         if (p.completedKPCount >= p.knowledgePoints.length) {
-            p.overallComplete = true;
+            p.overallComplete = true
+            await saveProgress(p)
+            emit("update", p)
+            // 全部完成，返回首页
+            emit("backToHome")
+            return
         } else {
-            p.currentKP++;
-            p.currentDifficulty = 0;
+            // 下一个知识点
+            p.currentKP++
+            p.currentDifficulty = 0
         }
-        // 返回首页
-        emit("backToHome");
     } else {
-        p.currentDifficulty++;
+        p.currentDifficulty++
     }
 
-    await saveProgress(p);
-    emit("update", p);
-    questions.value = [];
-    allChecked.value = false;
+    await saveProgress(p)
+    emit("update", p)
+    questions.value = []
+    allChecked.value = false
+    // 自动获取下一轮题目
+    fetchRound()
 }
 
 // ---- 重试错题 ----
