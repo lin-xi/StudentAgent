@@ -4,4 +4,7 @@ pydantic==2.10.4
 langchain==0.3.19
 langchain-openai==0.3.7
 python-dotenv==1.0.1
-langchain
+mysql-connector-python==9.1.0
+pytest==8.3.3
+pytest-asyncio==0.24.0
+httpx==0.28.0

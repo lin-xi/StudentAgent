@@ -1,33 +1,33 @@
 <script setup>
-import { computed } from 'vue'
+import { computed } from "vue";
 
 const props = defineProps({
   knowledgePoints: { type: Array, required: true },
   questionStats: { type: Object, default: () => ({}) }, // { kpId: { total: 24, wrong: 5 } }
-})
+});
 
-const emit = defineEmits(['select'])
+const emit = defineEmits(["select"]);
 
 // 获取知识点答题样式
 function getOutlineClass(kp) {
-  const stats = props.questionStats[kp.id] || { total: 24, wrong: 0 }
-  const wrongRate = stats.total > 0 ? stats.wrong / stats.total : 0
+  const stats = props.questionStats[kp.id] || { total: 24, wrong: 0 };
+  const wrongRate = stats.total > 0 ? stats.wrong / stats.total : 0;
 
-  if (wrongRate > 0.5) return 'high-wrong'
-  if (wrongRate > 0.3) return 'mid-wrong'
-  if (wrongRate > 0) return 'low-wrong'
-  return 'all-correct'
+  if (wrongRate > 0.5) return "high-wrong";
+  if (wrongRate > 0.3) return "mid-wrong";
+  if (wrongRate > 0) return "low-wrong";
+  return "all-correct";
 }
 
 function handleClick(kp, index) {
-  emit('select', { kp, index })
+  emit("select", { kp, index });
 }
 </script>
 
 <template>
   <div class="outline-card">
     <div class="outline-header">
-      <h3 class="outline-title">大纲答题</h3>
+      <h3 class="outline-title">答题概览</h3>
       <span class="outline-desc">点击知识点查看详情</span>
     </div>
 
@@ -44,9 +44,7 @@ function handleClick(kp, index) {
         <span class="kp-stats" v-if="questionStats[kp.id]">
           {{ questionStats[kp.id].wrong }}/{{ questionStats[kp.id].total }}
         </span>
-        <span class="kp-stats" v-else>
-          0/24
-        </span>
+        <span class="kp-stats" v-else> 0/24 </span>
         <!-- 完成日期 -->
         <span class="kp-completed-date" v-if="kp.completedDate">
           {{ kp.completedDate }}

@@ -14,26 +14,67 @@ import SubjectSelect from "./components/SubjectSelect.vue";
 import GradeSelect from "./components/GradeSelect.vue";
 import LearningView from "./components/LearningView.vue";
 import HomeView from "./components/HomeView.vue";
+import LoginView from "./components/LoginView.vue";
+import RegisterView from "./components/RegisterView.vue";
 
-const view = ref("loading"); // loading | welcome | subject | grade | home | learning | complete
+const view = ref("loading"); // loading | login | register | welcome | subject | grade | home | learning | complete
 const progress = ref(null);
 const levelInfo = ref(null);
 const subjects = ["数学", "英语", "软考"];
 const grades = [4, 5, 6];
+const currentUser = ref(null);
 
 // 学习流程中的临时选择
 const selectedSubject = ref("");
 const selectedGrade = ref(null);
 const showConfirmReset = ref(false);
 
+// 登录注册处理
+function handleLoginSuccess(userData) {
+    currentUser.value = userData;
+    view.value = "welcome";
+}
+
+function handleRegisterSuccess() {
+    view.value = "login";
+}
+
+function handleShowLogin() {
+    view.value = "login";
+}
+
+function handleShowRegister() {
+    view.value = "register";
+}
+
+function handleLoginViewBack() {
+    view.value = "welcome";
+}
+
+function handleRegisterViewBack() {
+    view.value = "login";
+}
+
 onMounted(async () => {
+    // 检查登录状态
+    try {
+        const res = await fetch("/api/me");
+        const data = await res.json();
+        if (data.authenticated) {
+            currentUser.value = data;
+        }
+    } catch (e) {
+        console.error("检查登录状态失败:", e);
+    }
+
+    // 加载学习进度
     const saved = await loadProgress();
     if (saved) {
         progress.value = saved;
         levelInfo.value = getLevelTitle(saved.completedKPCount);
-        view.value = saved.overallComplete ? "complete" : "home";  // 默认进入首页
+        view.value = saved.overallComplete ? "complete" : "home";
     } else {
-        view.value = "welcome";
+        view.value = currentUser.value ? "welcome" : "login";
     }
 });
 
@@ -153,6 +194,21 @@ async function handleRelearnOutline(index) {
                 <div class="spinner"></div>
                 <p>加载中...</p>
             </div>
+
+            <!-- 登录 -->
+            <LoginView
+                v-else-if="view === 'login'"
+                @login="handleLoginSuccess"
+                @register="handleShowRegister"
+                @back="handleLoginViewBack"
+            />
+
+            <!-- 注册 -->
+            <RegisterView
+                v-else-if="view === 'register'"
+                @login="handleRegisterSuccess"
+                @back="handleRegisterViewBack"
+            />
 
             <!-- 欢迎 / 进度恢复 -->
             <WelcomeScreen
