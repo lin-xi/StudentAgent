@@ -1,6 +1,7 @@
 """
 智能出题与评估 API 路由。
 """
+import json
 import logging
 
 from fastapi import HTTPException
@@ -9,6 +10,7 @@ from pydantic import BaseModel, Field
 from app import app
 from agent import generate_question, generate_question_batch, evaluate_answer
 from syllabus import get_syllabus
+from database import get_connection
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -69,9 +71,38 @@ def api_generate_question(req: GenerateQuestionRequest):
 
 @app.post("/api/generate-question-batch", tags=["Learning"])
 def api_generate_question_batch(req: GenerateQuestionBatchRequest):
-    """生成 8 道题目（一次 LLM 调用）。"""
+    """生成 8 道题目（一次 LLM 调用），并将结果写入 questions 表。"""
     try:
         questions = generate_question_batch(req.subject, req.grade, req.kp_id, req.difficulty)
+
+        # 获取知识点名称
+        kps = get_syllabus(req.subject, req.grade)
+        kp_name = kps[req.kp_id]["name"] if req.kp_id < len(kps) else ""
+
+        # 写入数据库
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        for q in questions:
+            cursor.execute("""
+                INSERT INTO questions (subject, grade, kp, difficulty, question, answer, options, explanation, question_type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                req.subject,
+                req.grade,
+                kp_name,
+                req.difficulty,
+                q.get("question", ""),
+                q.get("answer", ""),
+                json.dumps(q.get("options")) if q.get("options") else None,
+                q.get("explanation", ""),
+                q.get("type", "MCQ"),
+            ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
         return {"questions": questions}
     except Exception as e:
         logger.exception("Error generating question batch")

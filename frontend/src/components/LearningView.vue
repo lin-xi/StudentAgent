@@ -2,7 +2,6 @@
 import { ref, computed, watch } from "vue";
 import { saveProgress, QUESTIONS_PER_ROUND, recordCheckIn, markKPCompleted } from "../db.js";
 import {
-    generateQuestion,
     generateQuestionBatch,
     evaluateAnswer,
 } from "../api.js";
@@ -166,42 +165,18 @@ async function advanceDifficulty() {
     fetchRound()
 }
 
-// ---- 重试错题 ----
-async function retryWrong() {
+// ---- 重试错题：只重置状态，不重新生成题目 ----
+function retryWrong() {
     const wrong = questions.value.filter((q) => !q.passed);
-    loading.value = true;
-    allChecked.value = false;
 
-    try {
-        const results = await Promise.all(
-            wrong.map((q) =>
-                generateQuestion(
-                    props.progress.subject,
-                    props.progress.grade,
-                    currentKP.value.id,
-                    currentDifficultyLabel.value,
-                    q.id,
-                ),
-            ),
-        );
-        for (let i = 0; i < wrong.length; i++) {
-            const newQ = results[i];
-            if (newQ) {
-                wrong[i].question = newQ.question;
-                wrong[i].options = newQ.options || {};
-                wrong[i].answer = newQ.answer;
-                wrong[i].explanation = newQ.explanation || "";
-                wrong[i].userAnswer = "";
-                wrong[i].answered = false;
-                wrong[i].evaluation = null;
-                wrong[i].passed = false;
-            }
-        }
-    } catch {
-        error.value = "重试获取题目失败";
-    } finally {
-        loading.value = false;
+    for (const q of wrong) {
+        q.userAnswer = "";
+        q.answered = false;
+        q.evaluation = null;
+        q.passed = false;
     }
+
+    allChecked.value = false;
 }
 
 // ---- 监听 ----

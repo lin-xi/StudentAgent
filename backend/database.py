@@ -54,9 +54,9 @@ def init_tables():
             id INT AUTO_INCREMENT PRIMARY KEY,
             subject VARCHAR(50) NOT NULL,
             grade INT NOT NULL,
-            syllabus_json JSON,
+            kp VARCHAR(500) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY unique_course (subject, grade)
+            UNIQUE KEY unique_course (subject, grade, kp(255))
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
@@ -83,10 +83,14 @@ def init_tables():
             id INT AUTO_INCREMENT PRIMARY KEY,
             subject VARCHAR(50) NOT NULL,
             grade INT NOT NULL,
-            kp_id INT NOT NULL,
+            kp VARCHAR(500) NOT NULL,
             difficulty VARCHAR(20) NOT NULL,
-            question_json JSON NOT NULL,
-            generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            question TEXT NOT NULL,
+            answer VARCHAR(500) NOT NULL,
+            options JSON,
+            explanation TEXT,
+            question_type VARCHAR(50) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
