@@ -65,6 +65,7 @@ export async function getProgress(subjectId, gradeId) {
     for (let item of result.data) {
       if (!progressMap.has(item.kp)) {
         progressList.push({
+          id: item.id,
           kp: item.kp,
           subject_id: item.subject_id,
           grade_id: item.grade_id,
@@ -76,13 +77,11 @@ export async function getProgress(subjectId, gradeId) {
         progressMap.set(item.kp, progressList.length - 1);
       }
       const pItem = progressList[progressMap.get(item.kp)];
-      if (pItem.status[item.kp_level]) {
-        pItem.status[item.kp_level] = item.check_in;
-        pItem.wrong_count += item.wrong_count;
-        if (item.kp_level === 3 && item.check_in) {
-          pItem.allComplete = true;
-          pItem.check_in_date = item.check_in_date;
-        }
+      pItem.status[item.kp_level] = item.check_in;
+      pItem.wrong_count += item.wrong_count;
+      if (item.kp_level === 3 && item.check_in) {
+        pItem.allComplete = true;
+        pItem.check_in_date = item.check_in_date;
       }
     }
   }
@@ -101,7 +100,7 @@ export async function getProgress(subjectId, gradeId) {
  * @param {string} progressData.check_in_date - 完成时间 YYYY-MM-DD
  */
 export async function saveProgress(progressData) {
-  return request('/progress', {
+  return request('/saveProgress', {
     method: 'POST',
     body: JSON.stringify({
       subject_id: progressData.subject_id,

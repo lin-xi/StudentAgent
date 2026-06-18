@@ -6,9 +6,10 @@
 import hashlib
 import json
 import logging
-import random
+import traceback
 from typing import Any, Optional
 
+from database import get_connection
 from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
@@ -112,190 +113,228 @@ def _try_init_llm():
 def _try_langchain_question_batch(
     subject: str, grade: str, kp_name: str, difficulty: str
 ) -> Optional[list[dict]]:
-    """一次 LLM 调用生成 8 道题目（带缓存）。"""
-    if not _try_init_llm():
-        return None
-
-    # ---- 1. 查缓存 ----
+    """一次 LLM 调用生成 8 道题目（带缓存 + 数据库查询）。"""
+    # ---- 1. 先查缓存 ----
     cache_key = _make_question_batch_cache_key(subject, grade, kp_name, difficulty)
     cached = _cache_get(cache_key)
     if cached is not None:
         logger.info("Q batch cache HIT %s/%s", subject, kp_name)
         return cached
 
-    # ---- 2. 未命中，调大模型 ----
-    logger.info("Q batch cache MISS %s/%s — calling LLM", subject, kp_name)
-
-    math_prompt = f"""
-    【角色设定】
-    你是一位拥有20年教龄的小学特级数学教师，曾获全国教学大赛一等奖，深谙儿童认知发展规律。你出题的特点是：题目生活化、思维有梯度、陷阱设置巧妙、能诊断学生真实水平。
-
-    【任务】
-    请为小学【{grade}年级】数学的知识点【{kp_name}】设计一套{difficulty}难度的应用题。
-
-    【出题要求 - 必须逐条执行】
-
-    1. 题目结构设计（共8题）
-        - 基础巩固层 第1，2题：直接应用公式/概念，90%学生应能独立完成
-        - 理解辨析层 第3，4题：设置1-2个"形似神不似"的干扰项，专门狙击常见错误
-        - 综合应用层 第5，6题：结合2个以上知识点，或嵌入真实生活场景
-        - 思维拓展层 第7，8题：开放性问题，允许不同解法，考察元认知
-        - 每道题不能相同
-
-    2. 每道题必须包含
-        - 题目正文（语言生动，避免"小明小红"刻板情境）
-        - 答案，详细的解题步骤
-        - 教师批注和解析：
-            * 这道考察的知识点的解析
-            * 每个错误选项对应的真实思维路径
-            * 这道题诊断的具体漏洞
-            * 一句话点醒话术
-
-    3. 返回严格的 JSON 格式，不要包含其他文字
-
-    ```Json
-    [
-          {{"question": "题目正文1", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
-          {{"question": "题目正文2", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
-          {{"question": "题目正文3", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
-          {{"question": "题目正文4", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
-          {{"question": "题目正文5", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
-          {{"question": "题目正文6", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
-          {{"question": "题目正文7", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
-          {{"question": "题目正文8", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}}
-      ]
-      ```
-
-     【自检】
-     请你在生成题目后，逐条核对以下项目并输出结果：
-     1. 解析是否分别说明了正确与错误的原因？若缺少任一项，请补充。
-     2. 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
-    """
-
-    english_prompt = f"""
-    【角色设定】
-    你是一位拥有25年教龄的小学英语特级教师，全国英语教学大赛金奖得主，人教版/外研版教材核心编委。你深谙中国小学生英语学习的母语负迁移规律，擅长用选择题精准"钓鱼"——每个错误选项都对应一个真实的错误思维路径。你的题目特点是：语境真实、干扰项有心理学依据、题干本身就是语言输入。
-
-    【任务】
-    请为小学【{grade}年级】英语的知识点【{kp_name}】设计一套{difficulty}难度的选择题诊断练习。
-
-    【出题铁律 - 逐条执行】
-
-
-    2. 题目结构（共8题，全部为单项选择，每题4个选项）
-        □ 形式识别层（2题）：考察"{kp_name}"的形式本身
-            - 选项设计为"形式辨析"型
-            - 至少1题含视觉/听觉陷阱（如：形近词、同音词）
-
-        □ 语境辨析层（2题）：嵌入真实对话/短文片段
-            - 题干为20-30词的微语境
-            - 错误选项对应"似是而非"的真实错误
-            - 至少2题的错误选项来自中文直译思维
-
-        □ 语用得体层（2题）：考察场合、身份、礼貌程度
-            - 错误选项为"语法对但不得体"
-
-        □ 综合陷阱层（1题）："金牌陷阱题"
-            - "{kp_name}"与其他知识点交叉
-            - 4个选项都看似合理
-            - 预估错误率60%
-
-    3. 每道题必须包含
-    - 题目正文（语言生动，真实场景：课堂/家庭/操场/食堂/春游）
-    - 选项A/B/C/D（正确选项位置随机）
-    - 答案，A/B/C/D中的正确选项字母
-    - 教师批注和解析：
-            * 这道考察的知识点的解析
-            * 每个错误选项对应的真实思维路径
-            * 这道题诊断的具体漏洞
-            * 一句话点醒话术
-
-    4. 干扰项心理学模板
-    - 选项A：机械操练错误（漏形式标记）
-    - 选项B：母语直译陷阱（中式英语）
-    - 选项C：过度泛化错误（规则滥用）
-    - 选项D：正确答案
-    - 至少3题打破"三长一短"等应试技巧
-
-    5. 语境真实性
-    - 人名：Mike, Sarah, Wu Binbin, Chen Jie, Robin等教材人物
-    - 场景：小学生真实生活
-    - 拒绝真空语法题
-
-    6. 返回严格的 JSON 格式，不要包含其他文字
-    7. JSON 格式：[
-        {{"question": "题目正文1", "type": "MCQ", "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文2", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文3", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文4", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文5", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文6", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文7", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文8", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}}
-    ]
-
-    【自检】
-    请你在生成题目后，逐条核对以下项目并输出结果：
-    1. A、B、C、D四个答案是否都一样
-    2. 选项中是否包含正确答案，如果不在，更换选项
-    3. 题目中是否包含英语的问题
-    4. 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
-    """
-
-    ruankao_prompt = f"""
-    【角色设定】
-    你是一位拥有多年教龄的软考【高级系统架构师】特级教师，精通考试命题规律、考点分布及常见学生误区。
-
-    【任务】
-    请为软考【高级系统架构师】的知识点【{kp_name}】设计一套{difficulty}难度的选择题诊断练习。
-
-    【出题铁律 - 逐条执行】
-    1. 题目结构（共8题，全部为6单项选择，每题4个选项，2个应用题。）
-        □ 考察"{kp_name}"核心概念、定义、区分度高的基础知识，3道选择题
-        □ 考察"{kp_name}"理解应用、简单场景分析、易混淆点对比，3道选择题
-        □ 考查"{kp_name}"综合分析、架构选型决策、多知识点融合、隐含陷阱，2道应用题
-
-    2. 题干要求：
-       - 题干必须自包含、无歧义。
-
-    4. 选项设计：
-        - 每个题目提供 A、B、C、D 四个选项。
-        - 正确项必须唯一，且必须出现在选项中
-        - 干扰项应源于常见错误理解或真实考试中出现的混淆点，不能明显荒谬。
-        - 选项长度尽量保持一致，不出现“以上都对/都错”等绝对化表述（除非考点就是这种逻辑）。
-
-    5. 教师批注和解析：
-        - 每题后给出教师批注和解析。
-        - 批注和解析必须包含：
-            - 这道考察的知识点的解析
-            - 为什么正确（对应哪个原理/教材原文/架构原则）
-            - 为什么错误（指出每个错误选项的错因或典型误区）
-
-    6. 返回严格的 JSON 格式，不要包含其他文字
-      ```JSON
-      [
-        {{"question": "题目正文1", "type": "MCQ", "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文2", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文3", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文4", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文5", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文6", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文7", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
-        {{"question": "题目正文8", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}}
-    ]
-    ```
-
-    【自检】
-    请你在生成题目后，逐条核对以下项目并输出结果：
-    □ 每道题题干是否包含业务场景？若没有，请修改。
-    □ 选项中是否包含正确答案，如果不在，更换选项
-    □ 解析是否分别说明了正确与错误的原因？若缺少任一项，请补充。
-    □ 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
-
-    """
-
+    # ---- 2. 缓存未命中，查数据库 ----
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
     try:
+        cursor.execute(
+            """
+            SELECT question, answer, options, explanation, question_type
+            FROM questions
+            WHERE subject = %s AND grade = %s AND kp = %s AND difficulty = %s
+            LIMIT 8
+            """,
+            (subject, grade, kp_name, difficulty),
+        )
+        rows = cursor.fetchall()
+        if rows:
+            questions = []
+            for row in rows:
+                q = {
+                    "question": row["question"],
+                    "type": row["question_type"],
+                    "answer": row["answer"].strip(),
+                    "explanation": row.get("explanation") or "",
+                }
+                if row.get("options"):
+                    q["options"] = (
+                        json.loads(row["options"])
+                        if isinstance(row["options"], str)
+                        else row["options"]
+                    )
+                questions.append(q)
+            logger.info(
+                "Q batch DB HIT %s/%s - found %d questions",
+                subject,
+                kp_name,
+                len(questions),
+            )
+            # 写入缓存，避免重复查库
+            _cache_set(cache_key, questions)
+            return questions if questions else None
+
+        # ---- 3. 数据库也无数据，调大模型 ----
+        logger.info("Q batch cache MISS %s/%s — calling LLM", subject, kp_name)
+
+        math_prompt = f"""
+        【角色设定】
+        你是一位拥有20年教龄的小学特级数学教师，曾获全国教学大赛一等奖，深谙儿童认知发展规律。你出题的特点是：题目生活化、思维有梯度、陷阱设置巧妙、能诊断学生真实水平。
+
+        【任务】
+        请为小学【{grade}年级】数学的知识点【{kp_name}】设计一套{difficulty}难度的应用题。
+
+        【出题要求 - 必须逐条执行】
+
+        1. 题目结构设计（共8题）
+            - 基础巩固层 第1，2题：直接应用公式/概念，90%学生应能独立完成
+            - 理解辨析层 第3，4题：设置1-2个"形似神不似"的干扰项，专门狙击常见错误
+            - 综合应用层 第5，6题：结合2个以上知识点，或嵌入真实生活场景
+            - 思维拓展层 第7，8题：开放性问题，允许不同解法，考察元认知
+            - 每道题不能相同
+
+        2. 每道题必须包含
+            - 题目正文（语言生动，避免"小明小红"刻板情境）
+            - 答案，详细的解题步骤
+            - 教师批注和解析：
+                * 这道考察的知识点的解析
+                * 每个错误选项对应的真实思维路径
+                * 这道题诊断的具体漏洞
+                * 一句话点醒话术
+
+        3. 返回严格的 JSON 格式，不要包含其他文字
+
+        ```Json
+        [
+              {{"question": "题目正文1", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+              {{"question": "题目正文2", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+              {{"question": "题目正文3", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+              {{"question": "题目正文4", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+              {{"question": "题目正文5", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+              {{"question": "题目正文6", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+              {{"question": "题目正文7", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}},
+              {{"question": "题目正文8", "type": "problem-solving", "answer": "解题步骤和答案", "explanation": "教师批注和解析"}}
+          ]
+          ```
+
+        【自检】
+        请你在生成题目后，逐条核对以下项目并输出结果：
+        1. 解析是否分别说明了正确与错误的原因？若缺少任一项，请补充。
+        2. 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
+        """
+
+        english_prompt = f"""
+        【角色设定】
+        你是一位拥有25年教龄的小学英语特级教师，全国英语教学大赛金奖得主，人教版/外研版教材核心编委。你深谙中国小学生英语学习的母语负迁移规律，擅长用选择题精准"钓鱼"——每个错误选项都对应一个真实的错误思维路径。你的题目特点是：语境真实、干扰项有心理学依据、题干本身就是语言输入。
+
+        【任务】
+        请为小学【{grade}年级】英语的知识点【{kp_name}】设计一套{difficulty}难度的选择题诊断练习。
+
+        【出题铁律 - 逐条执行】
+
+
+        2. 题目结构（共8题，全部为单项选择，每题4个选项）
+            □ 形式识别层（2题）：考察"{kp_name}"的形式本身
+                - 选项设计为"形式辨析"型
+                - 至少1题含视觉/听觉陷阱（如：形近词、同音词）
+
+            □ 语境辨析层（2题）：嵌入真实对话/短文片段
+                - 题干为20-30词的微语境
+                - 错误选项对应"似是而非"的真实错误
+                - 至少2题的错误选项来自中文直译思维
+
+            □ 语用得体层（2题）：考察场合、身份、礼貌程度
+                - 错误选项为"语法对但不得体"
+
+            □ 综合陷阱层（1题）："金牌陷阱题"
+                - "{kp_name}"与其他知识点交叉
+                - 4个选项都看似合理
+                - 预估错误率60%
+
+        3. 每道题必须包含
+        - 题目正文（语言生动，真实场景：课堂/家庭/操场/食堂/春游）
+        - 选项A/B/C/D（正确选项位置随机）
+        - 答案，A/B/C/D中的正确选项字母
+        - 教师批注和解析：
+                * 这道考察的知识点的解析
+                * 每个错误选项对应的真实思维路径
+                * 这道题诊断的具体漏洞
+                * 一句话点醒话术
+
+        4. 干扰项心理学模板
+        - 选项A：机械操练错误（漏形式标记）
+        - 选项B：母语直译陷阱（中式英语）
+        - 选项C：过度泛化错误（规则滥用）
+        - 选项D：正确答案
+        - 至少3题打破"三长一短"等应试技巧
+
+        5. 语境真实性
+        - 人名：Mike, Sarah, Wu Binbin, Chen Jie, Robin等教材人物
+        - 场景：小学生真实生活
+        - 拒绝真空语法题
+
+        6. 返回严格的 JSON 格式，不要包含其他文字
+        7. JSON 格式：[
+            {{"question": "题目正文1", "type": "MCQ", "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文2", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文3", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文4", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文5", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文6", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文7", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文8", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}}
+        ]
+
+        【自检】
+        请你在生成题目后，逐条核对以下项目并输出结果：
+        1. A、B、C、D四个答案是否都一样
+        2. 选项中是否包含正确答案，如果不在，更换选项
+        3. 题目中是否包含英语的问题
+        4. 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
+        """
+
+        ruankao_prompt = f"""
+        【角色设定】
+        你是一位拥有多年教龄的软考【高级系统架构师】特级教师，精通考试命题规律、考点分布及常见学生误区。
+
+        【任务】
+        请为软考【高级系统架构师】的知识点【{kp_name}】设计一套{difficulty}难度的选择题诊断练习。
+
+        【出题铁律 - 逐条执行】
+        1. 题目结构（共8题，全部为6单项选择，每题4个选项，2个应用题。）
+            □ 考察"{kp_name}"核心概念、定义、区分度高的基础知识，3道选择题
+            □ 考察"{kp_name}"理解应用、简单场景分析、易混淆点对比，3道选择题
+            □ 考查"{kp_name}"综合分析、架构选型决策、多知识点融合、隐含陷阱，2道应用题
+
+        2. 题干要求：
+          - 题干必须自包含、无歧义。
+
+        4. 选项设计：
+            - 每个题目提供 A、B、C、D 四个选项。
+            - 正确项必须唯一，且必须出现在选项中
+            - 干扰项应源于常见错误理解或真实考试中出现的混淆点，不能明显荒谬。
+            - 选项长度尽量保持一致，不出现“以上都对/都错”等绝对化表述（除非考点就是这种逻辑）。
+
+        5. 教师批注和解析：
+            - 每题后给出教师批注和解析。
+            - 批注和解析必须包含：
+                - 这道考察的知识点的解析
+                - 为什么正确（对应哪个原理/教材原文/架构原则）
+                - 为什么错误（指出每个错误选项的错因或典型误区）
+
+        6. 返回严格的 JSON 格式，不要包含其他文字
+          ```JSON
+          [
+            {{"question": "题目正文1", "type": "MCQ", "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文2", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文3", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文4", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文5", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文6", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文7", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}},
+            {{"question": "题目正文8", "type": "MCQ",  "options": {{"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}}, "answer": "A/B/C/D中的正确选项字母", "explanation": "教师批注和解析"}}
+        ]
+        ```
+
+        【自检】
+        请你在生成题目后，逐条核对以下项目并输出结果：
+        □ 每道题题干是否包含业务场景？若没有，请修改。
+        □ 选项中是否包含正确答案，如果不在，更换选项
+        □ 解析是否分别说明了正确与错误的原因？若缺少任一项，请补充。
+        □ 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
+
+        """
         from langchain_core.messages import HumanMessage
+
+        if not _llm:
+            _try_init_llm()
 
         subject_prompt = ""
         if subject == "数学":
@@ -307,19 +346,21 @@ def _try_langchain_question_batch(
 
         response = _llm.invoke([HumanMessage(content=subject_prompt)])
         result = response.content
-
+        print("大模型结果>>>>>", result)
         # 尝试解析 JSON
         result = result.strip()
         if result.startswith("```"):
             result = result.split("\n", 1)[1]
             result = result.rsplit("```", 1)[0]
         result = result.strip()
+        print("大模型结果>>>>>", result)
 
         data = json.loads(result)
         if not isinstance(data, list):
             logger.warning("LLM did not return a list, got %s", type(data))
             return None
 
+        print("大模型结果>>>>>", data)
         questions = []
         for item in data:
             q = {
@@ -334,10 +375,35 @@ def _try_langchain_question_batch(
 
         # ---- 3. 写缓存 ----
         _cache_set(cache_key, questions)
+
+        for q in questions:
+            cursor.execute(
+                """
+                INSERT INTO questions (subject, grade, kp, difficulty, question, answer, options, explanation, question_type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+                (
+                    subject,
+                    grade,
+                    kp_name,
+                    difficulty,
+                    q.get("question", ""),
+                    q.get("answer", ""),
+                    json.dumps(q.get("options")) if q.get("options") else None,
+                    q.get("explanation", ""),
+                    q.get("type", "MCQ"),
+                ),
+            )
+
+        conn.commit()
         return questions
+
     except Exception as e:
-        logger.warning(f"LangChain question batch generation failed: {e}")
-        return None
+        traceback.print_exc()
+        logger.warning(f"Database query failed: {e}")
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def _try_langchain_evaluation(
@@ -434,6 +500,8 @@ def generate_question_batch(
     """生成 8 道题目。先尝试 LangChain，失败则使用本地题库。"""
     # 尝试 LangChain 批量生成
     result = _try_langchain_question_batch(subject, grade, kp_id, difficulty)
+
+    print("最终结果>>>", result)
     if result:
         return result
     return []

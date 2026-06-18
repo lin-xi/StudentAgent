@@ -9,19 +9,26 @@ const props = defineProps({
 
 // 获取知识点答题样式
 function getOutlineClass(kp) {
-  if (kp.check_in) {
+  if (kp.allComplete) {
     const wrongRate = kp.wrong_count / 24;
     if (wrongRate > 0.5) return "high-wrong";
-    if (wrongRate > 0.3) return "mid-wrong";
-    if (wrongRate > 0) return "low-wrong";
     return "all-correct";
   } else {
     return "not-start";
   }
 }
 
+function getKPStatus(kp) {
+  if (kp.allComplete) {
+    return "completed";
+  } else {
+    return "";
+  }
+}
+
 function handleClick(kp, index) {
-  if (kp.check_in) {
+  console.log("handleClick>>>>", kp, index);
+  if (kp.allComplete) {
     emit("select", { kp, index });
   }
 }
@@ -39,7 +46,7 @@ function handleClick(kp, index) {
         v-for="(kp, idx) in knowledgePoints"
         :key="kp.id"
         class="outline-cell"
-        :class="[getOutlineClass(kp)]"
+        :class="[getOutlineClass(kp), getKPStatus(kp)]"
         @click="handleClick(kp, idx)"
       >
         <span class="kp-id">{{ idx + 1 }}</span>
@@ -149,6 +156,10 @@ function handleClick(kp, index) {
   border-color: #e8e8e8;
 }
 
+.outline-cell.completed {
+  background: #c6f9c6;
+  border-color: #76f476;
+}
 .kp-id {
   font-size: 0.7rem;
   font-weight: 700;

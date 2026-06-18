@@ -3,6 +3,7 @@
 """
 
 import logging
+import traceback
 from typing import Any, Optional
 
 from app import app
@@ -23,10 +24,10 @@ class SaveProgressRequest(BaseModel):
     subject_id: int = Field(..., description="学科 ID")
     grade_id: int = Field(..., description="年级 ID")
     course_id: int = Field(..., description="课程 ID/KP ID")
-    kp_level: str = Field(..., description="难度等级：basic/intermediate/advanced")
+    kp_level: int = Field(..., description="难度等级：1/2/3")
     check_in: bool = Field(..., description="是否完成打卡")
     wrong_count: int = Field(0, ge=0, description="错题数量")
-    check_in_date: Optional[str] = Field(None, description="完成时间 YYYY-MM-DD")
+    check_in_date: str = Field(..., description="完成时间 YYYY-MM-DD")
 
 
 class ProgressResponse(BaseModel):
@@ -157,6 +158,7 @@ def save_progress(
         return ProgressListResponse(code=200, error="", data={})
 
     except Exception as e:
+        traceback.print_exc()
         logger.exception("Error saving progress")
         return ProgressListResponse(code=500, error=str(e), data={})
     finally:

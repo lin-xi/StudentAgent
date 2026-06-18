@@ -1,11 +1,8 @@
 <script setup>
 import { computed } from "vue";
-import { getMonthData, getMonthTotalLevel } from "../db.js";
 
 const props = defineProps({
-  checkInRecords: { type: Array, default: [] },
-  currentStreak: { type: Number, default: 0 },
-  maxStreak: { type: Number, default: 0 },
+  progress: { type: Array, default: [] },
 });
 
 const today = new Date();
@@ -13,11 +10,11 @@ const currentYear = today.getFullYear();
 const currentMonth = today.getMonth();
 
 const monthData = computed(() =>
-  getMonthData(props.checkInRecords, currentYear, currentMonth),
+  getMonthData(props.progress, currentYear, currentMonth),
 );
 
-const monthTotalLevel = computed(() =>
-  getMonthTotalLevel(props.checkInRecords, currentYear, currentMonth),
+const countData = computed(() =>
+  getCountData(props.progress, currentYear, currentMonth),
 );
 
 const weekDayNames = ["日", "一", "二", "三", "四", "五", "六"];
@@ -25,12 +22,63 @@ const weekDayNames = ["日", "一", "二", "三", "四", "五", "六"];
 // 计算当月第一天是周几
 const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay();
 
+// 获取月份打卡数据
+function getMonthData(progress, year, month) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const records = [];
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    let checkInCount = 0;
+    for (let p of progress) {
+      if (p.allComplete && p.check_in_date === dateStr) {
+        checkInCount++;
+      }
+    }
+    records.push({
+      count: checkInCount,
+    });
+  }
+  return records;
+}
+
+// 获取月份打卡数据
+function getCountData(progress, year, month) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  let streakCount = 0;
+  let allCount = 0;
+  let kpCount = 0;
+  let open = false;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    let exist = false;
+    for (let p of progress) {
+      if (p.allComplete && p.check_in_date === dateStr) {
+        kpCount++;
+        exist = true;
+      }
+    }
+    if (exist) {
+      if (!open) {
+        streakCount = 1;
+        open = true;
+      } else {
+        streakCount++;
+      }
+      allCount++;
+    } else {
+      open = false;
+    }
+  }
+  return {
+    streakCount,
+    allCount,
+    kpCount,
+  };
+}
+
 // 获取打卡等级样式
 function getCheckInClass(record) {
-  if (!record || record.count === 0) return "empty";
-  if (record.count >= 8) return "full";
-  if (record.count >= 5) return "most";
-  if (record.count >= 1) return "some";
+  if (record.count > 0) return "full";
   return "empty";
 }
 
@@ -58,11 +106,13 @@ const monthLabels = [
 <template>
   <div class="calendar-card">
     <div class="calendar-header">
-      <h3 class="calendar-title">{{ monthLabels[currentMonth] }}打卡</h3>
+      <h3 class="calendar-title">打卡 {{ countData.allCount }}</h3>
       <div class="calendar-stats">
-        <span class="streak-badge"> 🔥 连续 {{ currentStreak }} 天 </span>
+        <span class="streak-badge">
+          🔥 连续 {{ countData.streakCount }} 天
+        </span>
         <span class="level-badge">
-          📚 本月完成 {{ monthTotalLevel }} 个 level
+          📚 本月完成 {{ countData.kpCount }} 个 知识点
         </span>
       </div>
     </div>
@@ -88,12 +138,7 @@ const monthLabels = [
         :class="[getCheckInClass(record), { isToday: isTodayDay(idx) }]"
       >
         <span class="day-num">{{ idx + 1 }}</span>
-        <span class="day-count" v-if="record.count > 0">
-          {{ record.count }}题
-        </span>
-        <span class="today-mark" v-if="isTodayDay(idx) && record.count === 0">
-          今天
-        </span>
+        <span class="today-mark" v-if="isTodayDay(idx)"> 今天 </span>
       </div>
     </div>
   </div>

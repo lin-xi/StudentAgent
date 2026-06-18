@@ -30,10 +30,11 @@ const state = reactive({
   currentDifficulty: 0,
   allDone: false,
   loading: false,
+  progress: 0,
   error: "",
   allChecked: false,
   questions: [],
-  wrongCount: -1,
+  wrongCount: 0,
 });
 
 const answeredCount = computed(
@@ -171,10 +172,12 @@ async function answerQuestion(qId, answer) {
     state.allChecked = true;
 
     if (passedCount.value === state.questions.length) {
+      knowledgePoints.value[state.currentKP].status[state.currentDifficulty] =
+        true;
       await saveKpLevelProgress();
       advanceDifficulty();
     } else {
-      if (state.wrongCount == -1) {
+      if (state.wrongCount === 0) {
         state.wrongCount = state.questions.length - passedCount.value;
       }
     }
@@ -186,11 +189,12 @@ async function saveKpLevelProgress() {
   const today = new Date();
   const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const kp = knowledgePoints.value[state.currentKP];
+  console.log("当前知识点：>>>>>>", kp);
   return saveProgressApi({
     subject_id: state.subject.id,
     grade_id: state.grade.id,
     course_id: kp.id,
-    kp_level: state.currentKP,
+    kp_level: state.currentDifficulty,
     check_in: true,
     wrong_count: state.wrongCount,
     check_in_date: dateStr,
@@ -202,11 +206,12 @@ async function advanceDifficulty() {
   state.currentDifficulty++;
   if (state.currentDifficulty > 3) {
     state.currentKP++;
-    state.currentDifficulty = 0;
+    state.currentDifficulty = 1;
   }
   if (state.currentKP >= knowledgePoints.length) {
     state.allDone = true;
   } else {
+    state.questions = [];
     fetchRound();
   }
 }
@@ -244,6 +249,7 @@ function optionClass(q, opt) {
       :knowledgePoints="knowledgePoints"
       :currentKP="state.currentKP"
       :currentDifficulty="state.currentDifficulty"
+      :progress="state.progress"
     />
 
     <!-- 状态栏 -->

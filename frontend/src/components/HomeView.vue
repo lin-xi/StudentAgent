@@ -47,6 +47,7 @@ const selectedOutline = ref(null);
 const selectedOutlineIndex = ref(null);
 
 function handleOutlineSelect({ kp, index }) {
+  alert("kp");
   selectedOutline.value = kp;
   selectedOutlineIndex.value = index;
   showOutlineModal.value = true;
@@ -96,7 +97,7 @@ function handleStartLearning() {
     </div>
 
     <!-- 打卡日历 -->
-    <CalendarCard :checkInRecords="progressList" />
+    <CalendarCard :progress="progressList" />
 
     <!-- 大纲答题 -->
     <OutlineCard

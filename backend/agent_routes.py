@@ -85,33 +85,7 @@ def api_generate_question_batch(req: GenerateQuestionBatchRequest):
         questions = generate_question_batch(
             req.subject, req.grade, req.kp_id, req.difficulty
         )
-        # 写入数据库
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        for q in questions:
-            cursor.execute(
-                """
-                INSERT INTO questions (subject, grade, kp, difficulty, question, answer, options, explanation, question_type)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-                (
-                    req.subject,
-                    req.grade,
-                    req.kp_id,
-                    req.difficulty,
-                    q.get("question", ""),
-                    q.get("answer", ""),
-                    json.dumps(q.get("options")) if q.get("options") else None,
-                    q.get("explanation", ""),
-                    q.get("type", "MCQ"),
-                ),
-            )
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
+        print("生成题目>>>>", questions)
         return {"questions": questions}
     except Exception as e:
         logger.exception("Error generating question batch")

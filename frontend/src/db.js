@@ -213,16 +213,7 @@ export async function resetKPProgress(progress, kpIndex) {
   return p
 }
 
-// 获取月份打卡数据
-export function getMonthData(checkInRecords, year, month) {
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const records = []
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    records.push(checkInRecords[dateStr] || { count: 0, levelCompleted: 0 })
-  }
-  return records
-}
+
 
 // 计算月份总完成 level 数
 export function getMonthTotalLevel(checkInRecords, year, month) {

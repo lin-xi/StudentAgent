@@ -1,24 +1,28 @@
 <script setup>
 import { ref, computed, watch, onMounted, reactive } from "vue";
+import { useRouter } from "vue-router";
+
+const router = useRouter();
 
 const props = defineProps({
   knowledgePoints: { type: Array, required: true },
   currentKP: { type: Number, required: true },
   currentDifficulty: { type: Number, required: true },
-});
-
-const state = reactive({
-  progress: 0,
+  progress: { type: Number, required: true },
 });
 
 const scrollContainer = ref(null);
 
 function getKPStatus(kp) {
-  if (kp.allCompleted) return "completed";
-  if (kp.status[3]) return "advanced-done";
-  if (kp.status[2]) return "intermediate-done";
-  if (kp.status[1]) return "basic-done";
-  return "";
+  if (kp.status[3]) {
+    return "completed";
+  } else if (kp.status[2]) {
+    return "intermediate-done";
+  } else if (kp.status[1]) {
+    return "basic-done";
+  } else {
+    return "";
+  }
 }
 
 function getDifficultyStutus(kp, kpIdx, diffIdx) {
@@ -36,6 +40,10 @@ function getDifficultyStutus(kp, kpIdx, diffIdx) {
 
 function isActive(idx) {
   return idx === props.currentKP;
+}
+
+function goBack() {
+  router.replace({ path: "/home" });
 }
 
 // 自动滚动到当前知识点
@@ -61,10 +69,11 @@ watch(
   <div class="progress-map">
     <!-- 等级称号 -->
     <div class="level-badge">
+      <div class="back" @click="goBack">← 返回</div>
       <div class="level-info">
-        <span class="level-title">已完成{{ state.progress }}</span>
+        <span class="level-title">已完成{{ props.progress }}</span>
         <div class="level-bar-wrap">
-          <div class="level-bar" :style="{ width: state.progress + '%' }"></div>
+          <div class="level-bar" :style="{ width: props.progress + '%' }"></div>
         </div>
       </div>
     </div>
@@ -129,7 +138,14 @@ watch(
 .level-icon {
   font-size: 2rem;
 }
-
+.back {
+  background: linear-gradient(0deg, #d972bd 0%, #8080fe 100%);
+  padding: 10px 20px;
+  border-radius: 8px;
+  margin-right: 30px;
+  cursor: pointer;
+  color: #ffffff;
+}
 .level-info {
   flex: 1;
 }
