@@ -48,32 +48,72 @@ def init_tables():
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
-    # 课程表
+    # 学科表
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS courses (
+        CREATE TABLE IF NOT EXISTS subjects (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            subject VARCHAR(50) NOT NULL,
-            grade INT NOT NULL,
-            kp VARCHAR(500) NOT NULL,
+            name VARCHAR(50) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY unique_course (subject, grade, kp(255))
+            UNIQUE KEY unique_subject_name (name)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
-    # 学习进度表
+    # 年级表
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS grades (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_grade_name (name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
+    # 学科年级关联表
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS subject_grade (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            subject_id INT NOT NULL,
+            grade_id INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+            FOREIGN KEY (grade_id) REFERENCES grades(id) ON DELETE CASCADE,
+            UNIQUE KEY unique_subject_grade (subject_id, grade_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
+    # 课程表（修改为外键关联）
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS courses (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            subject_id INT NOT NULL,
+            grade_id INT NOT NULL,
+            kp VARCHAR(500) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_course (subject_id, grade_id, kp(255)),
+            FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+            FOREIGN KEY (grade_id) REFERENCES grades(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
+    # 学习进度表（按难度等级分记录）
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS progress (
             id INT AUTO_INCREMENT PRIMARY KEY,
             user_id INT NOT NULL,
+            kp_level VARCHAR(20) NOT NULL,
+            check_in BOOLEAN DEFAULT FALSE,
+            wrong_count INT DEFAULT 0,
+            check_in_date VARCHAR(20),
+            subject_id INT NOT NULL,
+            grade_id INT NOT NULL,
             course_id INT NOT NULL,
-            completed_kp_count INT DEFAULT 0,
-            kp_progress JSON,
-            overall_complete BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+            FOREIGN KEY (grade_id) REFERENCES grades(id) ON DELETE CASCADE,
             FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
-            UNIQUE KEY unique_progress (user_id, course_id)
+            UNIQUE KEY unique_progress (user_id, subject_id, grade_id, course_id, kp_level)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 

@@ -1,48 +1,58 @@
 <script setup>
-import { computed } from 'vue'
-import { getMonthData, getMonthTotalLevel } from '../db.js'
+import { computed } from "vue";
+import { getMonthData, getMonthTotalLevel } from "../db.js";
 
 const props = defineProps({
-  checkInRecords: { type: Object, default: () => ({}) },
+  checkInRecords: { type: Array, default: [] },
   currentStreak: { type: Number, default: 0 },
   maxStreak: { type: Number, default: 0 },
-})
+});
 
-const today = new Date()
-const currentYear = today.getFullYear()
-const currentMonth = today.getMonth()
+const today = new Date();
+const currentYear = today.getFullYear();
+const currentMonth = today.getMonth();
 
 const monthData = computed(() =>
-  getMonthData(props.checkInRecords, currentYear, currentMonth)
-)
+  getMonthData(props.checkInRecords, currentYear, currentMonth),
+);
 
 const monthTotalLevel = computed(() =>
-  getMonthTotalLevel(props.checkInRecords, currentYear, currentMonth)
-)
+  getMonthTotalLevel(props.checkInRecords, currentYear, currentMonth),
+);
 
-const weekDayNames = ['日', '一', '二', '三', '四', '五', '六']
+const weekDayNames = ["日", "一", "二", "三", "四", "五", "六"];
 
 // 计算当月第一天是周几
-const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay()
+const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay();
 
 // 获取打卡等级样式
 function getCheckInClass(record) {
-  if (!record || record.count === 0) return 'empty'
-  if (record.count >= 8) return 'full'
-  if (record.count >= 5) return 'most'
-  if (record.count >= 1) return 'some'
-  return 'empty'
+  if (!record || record.count === 0) return "empty";
+  if (record.count >= 8) return "full";
+  if (record.count >= 5) return "most";
+  if (record.count >= 1) return "some";
+  return "empty";
 }
 
 // 判断是否是今天
 function isTodayDay(idx) {
-  return idx === today.getDate() - 1
+  return idx === today.getDate() - 1;
 }
 
 const monthLabels = [
-  '一月', '二月', '三月', '四月', '五月', '六月',
-  '七月', '八月', '九月', '十月', '十一月', '十二月'
-]
+  "一月",
+  "二月",
+  "三月",
+  "四月",
+  "五月",
+  "六月",
+  "七月",
+  "八月",
+  "九月",
+  "十月",
+  "十一月",
+  "十二月",
+];
 </script>
 
 <template>
@@ -50,9 +60,7 @@ const monthLabels = [
     <div class="calendar-header">
       <h3 class="calendar-title">{{ monthLabels[currentMonth] }}打卡</h3>
       <div class="calendar-stats">
-        <span class="streak-badge">
-          🔥 连续 {{ currentStreak }} 天
-        </span>
+        <span class="streak-badge"> 🔥 连续 {{ currentStreak }} 天 </span>
         <span class="level-badge">
           📚 本月完成 {{ monthTotalLevel }} 个 level
         </span>
@@ -61,11 +69,7 @@ const monthLabels = [
 
     <div class="calendar-grid">
       <!-- 星期标题 -->
-      <div
-        v-for="name in weekDayNames"
-        :key="name"
-        class="weekday-label"
-      >
+      <div v-for="name in weekDayNames" :key="name" class="weekday-label">
         {{ name }}
       </div>
 
@@ -81,10 +85,7 @@ const monthLabels = [
         v-for="(record, idx) in monthData"
         :key="idx"
         class="day-cell"
-        :class="[
-          getCheckInClass(record),
-          { isToday: isTodayDay(idx) }
-        ]"
+        :class="[getCheckInClass(record), { isToday: isTodayDay(idx) }]"
       >
         <span class="day-num">{{ idx + 1 }}</span>
         <span class="day-count" v-if="record.count > 0">
@@ -194,7 +195,7 @@ const monthLabels = [
 }
 
 .day-cell.isToday.empty::after {
-  content: '';
+  content: "";
   position: absolute;
   bottom: 4px;
   left: 50%;

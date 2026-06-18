@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-将 syllabus.py 中的大纲数据导入到 courses 表中。
-每个科目 - 年级 - 知识点对应一条课程记录。
+将 syllabus.py 中的大纲数据导入到 subjects, grades, subject_grade, courses 表中。
+1. 先将学科名插入 subjects 表（已存在则跳过）
+2. 将年级名插入 grades 表（已存在则跳过）
+3. 在 subject_grade 表中建立关联（已存在则跳过）
+4. 每个科目 - 年级 - 知识点对应一条课程记录（已存在则更新）
 """
 
 import os
@@ -33,39 +36,108 @@ def get_db_connection():
     )
 
 
-def import_syllabus_to_courses():
-    """将 syllabus 数据导入 courses 表。"""
+def import_syllabus_to_tables():
+    """将 syllabus 数据导入到新表结构中，保留已有数据。"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    total_count = 0
+    subject_id_map = {}
+    grade_id_map = {}
+    total_kp_count = 0
+    insert_count = 0
+    update_count = 0
 
+    print("Step 1: 导入学科数据到 subjects 表...")
+    for subject in SYLLABUS.keys():
+        # 使用 INSERT IGNORE，已存在则跳过
+        cursor.execute(
+            """
+            INSERT IGNORE INTO subjects (name) VALUES (%s)
+        """,
+            (subject,),
+        )
+        cursor.execute("SELECT id FROM subjects WHERE name = %s", (subject,))
+        result = cursor.fetchone()
+        if result:
+            subject_id_map[subject] = result[0]
+            print(f"  ✓ 学科：{subject} (id={subject_id_map[subject]})")
+
+    print("\nStep 2: 导入年级数据到 grades 表...")
+    all_grades = set()
+    for grades in SYLLABUS.values():
+        for grade in grades.keys():
+            all_grades.add(grade)
+
+    for grade in sorted(all_grades, key=lambda x: x):
+        # 使用 INSERT IGNORE，已存在则跳过
+        cursor.execute(
+            """
+            INSERT IGNORE INTO grades (name) VALUES (%s)
+        """,
+            (grade,),
+        )
+        cursor.execute("SELECT id FROM grades WHERE name = %s", (grade,))
+        result = cursor.fetchone()
+        if result:
+            grade_id_map[grade] = result[0]
+            print(f"  ✓ 年级：{grade} (id={grade_id_map[grade]})")
+
+    print("\nStep 3: 建立学科年级关联到 subject_grade 表...")
     for subject, grades in SYLLABUS.items():
+        subject_id = subject_id_map[subject]
+        for grade in grades.keys():
+            grade_id = grade_id_map[grade]
+            # 使用 INSERT IGNORE，已存在则跳过
+            cursor.execute(
+                """
+                INSERT IGNORE INTO subject_grade (subject_id, grade_id) VALUES (%s, %s)
+            """,
+                (subject_id, grade_id),
+            )
+            print(f"  ✓ {subject} - {grade}")
+
+    print("\nStep 4: 导入课程数据到 courses 表（保留已有数据，更新重复数据）...")
+    for subject, grades in SYLLABUS.items():
+        subject_id = subject_id_map[subject]
         for grade, knowledge_points in grades.items():
+            grade_id = grade_id_map[grade]
+
             for kp in knowledge_points:
-                kp_id = kp["id"]
                 kp_name = kp["name"]
 
-                # 插入课程记录（使用 ON DUPLICATE KEY UPDATE 避免重复）
-                cursor.execute("""
-                    INSERT INTO courses (subject, grade, kp, created_at)
+                # 使用 INSERT ... ON DUPLICATE KEY UPDATE
+                # 如果 (subject_id, grade_id, kp) 唯一键冲突，则更新 kp 字段
+                cursor.execute(
+                    """
+                    INSERT INTO courses (subject_id, grade_id, kp, created_at)
                     VALUES (%s, %s, %s, NOW())
                     ON DUPLICATE KEY UPDATE kp = VALUES(kp)
-                """, (subject, grade, kp_name))
+                """,
+                    (subject_id, grade_id, kp_name),
+                )
 
-                total_count += 1
+                total_kp_count += 1
+                if cursor.rowcount == 1:
+                    insert_count += 1
+                elif cursor.rowcount == 2:
+                    update_count += 1
 
-                if total_count % 50 == 0:
-                    print(f"已导入 {total_count} 条记录...")
+                if total_kp_count % 50 == 0:
+                    print(f"  已处理 {total_kp_count} 条课程记录...")
 
     conn.commit()
     cursor.close()
     conn.close()
 
-    print(f"导入完成！共导入 {total_count} 条课程记录。")
+    print(f"\n=== 导入完成 ===")
+    print(f"  学科数：{len(subject_id_map)}")
+    print(f"  年级数：{len(grade_id_map)}")
+    print(
+        f"  课程记录：共 {total_kp_count} 条，新增 {insert_count} 条，更新 {update_count} 条"
+    )
 
 
 if __name__ == "__main__":
-    print("开始导入 syllabus 数据到 courses 表...")
-    import_syllabus_to_courses()
-    print("导入完成！")
+    print("=== 开始导入 syllabus 数据到新表结构 ===\n")
+    import_syllabus_to_tables()
+    print("\n=== 导入完成！===")

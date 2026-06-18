@@ -15,8 +15,8 @@ async function request(url, options = {}) {
   return res.json()
 }
 
-export async function fetchSyllabus(subject, grade) {
-  return request(`/syllabus?subject=${encodeURIComponent(subject)}&grade=${encodeURIComponent(grade)}`)
+export async function fetchSyllabus(subjectId, gradeId) {
+  return request(`/syllabus?subject_id=${subjectId}&grade_id=${gradeId}`)
 }
 
 export async function generateQuestion(subject, grade, kpId, difficulty, questionIndex = 0) {

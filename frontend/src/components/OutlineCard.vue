@@ -1,26 +1,29 @@
 <script setup>
 import { computed } from "vue";
 
+const emit = defineEmits(["select"]);
+
 const props = defineProps({
   knowledgePoints: { type: Array, required: true },
-  questionStats: { type: Object, default: () => ({}) }, // { kpId: { total: 24, wrong: 5 } }
 });
-
-const emit = defineEmits(["select"]);
 
 // 获取知识点答题样式
 function getOutlineClass(kp) {
-  const stats = props.questionStats[kp.id] || { total: 24, wrong: 0 };
-  const wrongRate = stats.total > 0 ? stats.wrong / stats.total : 0;
-
-  if (wrongRate > 0.5) return "high-wrong";
-  if (wrongRate > 0.3) return "mid-wrong";
-  if (wrongRate > 0) return "low-wrong";
-  return "all-correct";
+  if (kp.check_in) {
+    const wrongRate = kp.wrong_count / 24;
+    if (wrongRate > 0.5) return "high-wrong";
+    if (wrongRate > 0.3) return "mid-wrong";
+    if (wrongRate > 0) return "low-wrong";
+    return "all-correct";
+  } else {
+    return "not-start";
+  }
 }
 
 function handleClick(kp, index) {
-  emit("select", { kp, index });
+  if (kp.check_in) {
+    emit("select", { kp, index });
+  }
 }
 </script>
 
@@ -40,14 +43,13 @@ function handleClick(kp, index) {
         @click="handleClick(kp, idx)"
       >
         <span class="kp-id">{{ idx + 1 }}</span>
-        <span class="kp-name">{{ kp.name }}</span>
-        <span class="kp-stats" v-if="questionStats[kp.id]">
-          {{ questionStats[kp.id].wrong }}/{{ questionStats[kp.id].total }}
+        <span class="kp-name">{{ kp.kp }}</span>
+        <span class="kp-stats" v-if="kp.allComplete">
+          {{ kp.wrong_count }}/24
         </span>
-        <span class="kp-stats" v-else> 0/24 </span>
         <!-- 完成日期 -->
-        <span class="kp-completed-date" v-if="kp.completedDate">
-          {{ kp.completedDate }}
+        <span class="kp-completed-date" v-if="kp.allComplete">
+          {{ kp.check_in_date }}
         </span>
       </div>
     </div>
@@ -106,12 +108,11 @@ function handleClick(kp, index) {
 
 .outline-cell {
   flex: 0 0 auto;
-  width: 100px;
-  height: 80px;
+  width: 120px;
   display: flex;
+  padding: 10px 5px;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   border-radius: 12px;
   border: 2px solid var(--border);
   cursor: pointer;
@@ -120,12 +121,11 @@ function handleClick(kp, index) {
 }
 
 .outline-cell:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 2px solid var(--primary);
 }
 
 .outline-cell.all-correct {
-  background: #f0fdf4;
+  background: var(--success);
   border-color: var(--success);
 }
 
@@ -144,6 +144,11 @@ function handleClick(kp, index) {
   border-color: #fca5a5;
 }
 
+.outline-cell.not-start {
+  background: #ffffff;
+  border-color: #e8e8e8;
+}
+
 .kp-id {
   font-size: 0.7rem;
   font-weight: 700;
@@ -158,10 +163,6 @@ function handleClick(kp, index) {
   font-weight: 600;
   color: var(--text);
   text-align: center;
-  max-width: 80px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .kp-stats {

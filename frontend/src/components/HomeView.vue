@@ -1,75 +1,106 @@
 <script setup>
-import { ref, computed } from 'vue'
-import CalendarCard from './CalendarCard.vue'
-import OutlineCard from './OutlineCard.vue'
-import OutlineModal from './OutlineModal.vue'
+import { ref, computed, onMounted, watch, reactive } from "vue";
+import CalendarCard from "./CalendarCard.vue";
+import OutlineCard from "./OutlineCard.vue";
+import OutlineModal from "./OutlineModal.vue";
+import { useRouter, RouterView } from "vue-router";
+import { useUserStore } from "../stores/user";
+import { useLearningStore } from "../stores/learning";
+import { getProgress } from "../progress-api";
 
-const props = defineProps({
-  progress: { type: Object, required: true },
-  levelInfo: { type: Object, default: null },
-})
+const router = useRouter();
+const userStore = useUserStore();
+const learningStore = useLearningStore();
 
-const emit = defineEmits(['startLearning', 'relearnOutline'])
+const progressList = ref([]);
 
-const showOutlineModal = ref(false)
-const selectedOutline = ref(null)
-const selectedOutlineIndex = ref(null)
+const state = reactive({
+  progress: 0,
+});
 
-// 模拟答题统计（后续可从后端获取）
-const questionStats = computed(() => {
-  const stats = {}
-  props.progress.knowledgePoints.forEach((kp) => {
-    // TODO: 从后端获取实际答题数据
-    stats[kp.id] = { total: 24, wrong: Math.floor(Math.random() * 12) }
-  })
-  return stats
-})
+onMounted(async () => {
+  try {
+    await userStore.checkAuth();
+    const subject = learningStore.getSelectedSubject();
+    const grade = learningStore.getSelectedGrade();
+
+    const result = await getProgress(subject.id, grade.id);
+    console.log("progressList>>>>", result);
+
+    if (result && result.length > 0) {
+      progressList.value = result;
+      learningStore.setProgress(result);
+      if (checkComplete()) {
+        router.replace("/complete");
+      }
+      console.log("progressList.value>>>>", progressList.value);
+    }
+  } catch (e) {
+    console.error("加载进度失败:", e);
+  }
+});
+
+const emit = defineEmits(["startLearning", "relearnOutline"]);
+
+const showOutlineModal = ref(false);
+const selectedOutline = ref(null);
+const selectedOutlineIndex = ref(null);
 
 function handleOutlineSelect({ kp, index }) {
-  selectedOutline.value = kp
-  selectedOutlineIndex.value = index
-  showOutlineModal.value = true
+  selectedOutline.value = kp;
+  selectedOutlineIndex.value = index;
+  showOutlineModal.value = true;
+}
+
+function checkComplete() {
+  let complete = true;
+  let completeCount = 0;
+  if (progressList.value && progressList.value.length > 0) {
+    for (let item of progressList.value) {
+      if (!item.allComplete) {
+        complete = false;
+      } else {
+        completeCount++;
+      }
+    }
+  }
+  state.progress = Math.round(
+    (completeCount * 100) / progressList.value.length,
+  );
+  return complete;
 }
 
 function handleRelearnOutline(index) {
-  emit('relearnOutline', index)
+  emit("relearnOutline", index);
 }
 
 function handleStartLearning() {
-  emit('startLearning')
+  router.push("/learning");
 }
 </script>
 
 <template>
   <div class="home-view">
+    <header class="app-header">
+      <h1 class="app-title">📚 智能学习助手</h1>
+      <p class="app-subtitle">AI 驱动的个性化学习平台</p>
+    </header>
     <!-- 等级信息 -->
-    <div v-if="levelInfo" class="level-summary">
-      <span class="level-icon">{{ levelInfo.icon }}</span>
+    <div class="level-summary">
       <div class="level-info">
-        <span class="level-title">{{ levelInfo.title }}</span>
+        <span class="level-title">已完成 {{ state.progress }}%</span>
         <div class="level-bar-wrap">
-          <div
-            class="level-bar"
-            :style="{ width: levelInfo.progressPercent + '%' }"
-          ></div>
+          <div class="level-bar" :style="{ width: state.progress + '%' }"></div>
         </div>
-        <span class="level-next">
-          {{ levelInfo.next ? `还需${levelInfo.nextCount}个知识点达到${levelInfo.next.title}` : '已达最高等级！' }}
-        </span>
       </div>
     </div>
 
     <!-- 打卡日历 -->
-    <CalendarCard
-      :checkInRecords="progress.checkInRecords || {}"
-      :currentStreak="progress.currentStreak || 0"
-      :maxStreak="progress.maxStreak || 0"
-    />
+    <CalendarCard :checkInRecords="progressList" />
 
     <!-- 大纲答题 -->
     <OutlineCard
-      :knowledgePoints="progress.knowledgePoints"
-      :questionStats="questionStats"
+      :knowledgePoints="progressList"
       @select="handleOutlineSelect"
     />
 
@@ -83,7 +114,6 @@ function handleStartLearning() {
       :show="showOutlineModal"
       :selectedOutline="selectedOutline"
       :selectedOutlineIndex="selectedOutlineIndex"
-      :questionStats="questionStats"
       @close="showOutlineModal = false"
       @relearn="handleRelearnOutline"
     />

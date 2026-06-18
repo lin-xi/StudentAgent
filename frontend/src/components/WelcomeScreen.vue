@@ -1,5 +1,21 @@
 <script setup>
-defineEmits(['start'])
+import { useRouter } from "vue-router";
+import { useLearningStore } from "../stores/learning";
+
+const router = useRouter();
+const learningStore = useLearningStore();
+
+function handleStart() {
+  const subject = learningStore.getSelectedSubject();
+  const grade = learningStore.getSelectedGrade();
+
+  console.log("subject>>>>", subject, "grade>>>>", grade);
+  if (subject.id && grade.id) {
+    router.push("/home");
+  } else {
+    router.push("/select-subject");
+  }
+}
 </script>
 
 <template>
@@ -10,7 +26,7 @@ defineEmits(['start'])
       选择科目与年级，AI 将为你生成个性化学习题目，<br />
       助你循序渐进掌握每一个知识点！
     </p>
-    <button class="btn btn-primary btn-large" @click="$emit('start')">
+    <button class="btn btn-primary btn-large" @click="handleStart">
       🚀 开始学习
     </button>
   </div>

@@ -46,7 +46,7 @@ def _cache_set(key: str, value: Any) -> None:
 
 
 def _make_question_batch_cache_key(
-    subject: str, grade: int, kp_name: str, difficulty: str
+    subject: str, grade: str, kp_name: str, difficulty: str
 ) -> str:
     """生成出题批次缓存 key（一次 LLM 调用返回 8 题，整批缓存）。"""
     raw = f"batch:{subject}:{grade}:{kp_name}:{difficulty}"
@@ -55,7 +55,7 @@ def _make_question_batch_cache_key(
 
 def _make_eval_cache_key(
     subject: str,
-    grade: int,
+    grade: str,
     kp_name: str,
     difficulty: str,
     question: str,
@@ -110,7 +110,7 @@ def _try_init_llm():
 
 
 def _try_langchain_question_batch(
-    subject: str, grade: int, kp_name: str, difficulty: str
+    subject: str, grade: str, kp_name: str, difficulty: str
 ) -> Optional[list[dict]]:
     """一次 LLM 调用生成 8 道题目（带缓存）。"""
     if not _try_init_llm():
@@ -126,18 +126,12 @@ def _try_langchain_question_batch(
     # ---- 2. 未命中，调大模型 ----
     logger.info("Q batch cache MISS %s/%s — calling LLM", subject, kp_name)
 
-    difficulty_label = {
-        "basic": "基础",
-        "intermediate": "进阶",
-        "advanced": "高阶",
-    }.get(difficulty, difficulty)
-
     math_prompt = f"""
     【角色设定】
     你是一位拥有20年教龄的小学特级数学教师，曾获全国教学大赛一等奖，深谙儿童认知发展规律。你出题的特点是：题目生活化、思维有梯度、陷阱设置巧妙、能诊断学生真实水平。
 
     【任务】
-    请为小学【{grade}年级】数学的知识点【{kp_name}】设计一套{difficulty_label}难度的应用题。
+    请为小学【{grade}年级】数学的知识点【{kp_name}】设计一套{difficulty}难度的应用题。
 
     【出题要求 - 必须逐条执行】
 
@@ -183,7 +177,7 @@ def _try_langchain_question_batch(
     你是一位拥有25年教龄的小学英语特级教师，全国英语教学大赛金奖得主，人教版/外研版教材核心编委。你深谙中国小学生英语学习的母语负迁移规律，擅长用选择题精准"钓鱼"——每个错误选项都对应一个真实的错误思维路径。你的题目特点是：语境真实、干扰项有心理学依据、题干本身就是语言输入。
 
     【任务】
-    请为小学【{grade}年级】英语的知识点【{kp_name}】设计一套{difficulty_label}难度的选择题诊断练习。
+    请为小学【{grade}年级】英语的知识点【{kp_name}】设计一套{difficulty}难度的选择题诊断练习。
 
     【出题铁律 - 逐条执行】
 
@@ -243,8 +237,9 @@ def _try_langchain_question_batch(
     【自检】
     请你在生成题目后，逐条核对以下项目并输出结果：
     1. A、B、C、D四个答案是否都一样
-    2. 题目中是否包含英语的问题
-    3. 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
+    2. 选项中是否包含正确答案，如果不在，更换选项
+    3. 题目中是否包含英语的问题
+    4. 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
     """
 
     ruankao_prompt = f"""
@@ -252,7 +247,7 @@ def _try_langchain_question_batch(
     你是一位拥有多年教龄的软考【高级系统架构师】特级教师，精通考试命题规律、考点分布及常见学生误区。
 
     【任务】
-    请为软考【高级系统架构师】的知识点【{kp_name}】设计一套{difficulty_label}难度的选择题诊断练习。
+    请为软考【高级系统架构师】的知识点【{kp_name}】设计一套{difficulty}难度的选择题诊断练习。
 
     【出题铁律 - 逐条执行】
     1. 题目结构（共8题，全部为6单项选择，每题4个选项，2个应用题。）
@@ -293,7 +288,7 @@ def _try_langchain_question_batch(
     【自检】
     请你在生成题目后，逐条核对以下项目并输出结果：
     □ 每道题题干是否包含业务场景？若没有，请修改。
-    □ 选项中是否包含正确答案
+    □ 选项中是否包含正确答案，如果不在，更换选项
     □ 解析是否分别说明了正确与错误的原因？若缺少任一项，请补充。
     □ 难度标签与题目实际难度是否匹配？若不匹配，请调整题干或选项。
 
@@ -347,7 +342,7 @@ def _try_langchain_question_batch(
 
 def _try_langchain_evaluation(
     subject: str,
-    grade: int,
+    grade: str,
     kp_name: str,
     difficulty: str,
     question: str,
@@ -428,98 +423,26 @@ DIFFICULTY_LEVELS = ["basic", "intermediate", "advanced"]
 _question_cache: dict = {}
 
 
-def _get_question_bank(subject: str, grade: int) -> dict:
-    """获取或生成某个科目年级的本地题库。"""
-    cache_key = f"{subject}_{grade}"
-    if cache_key in _question_cache:
-        return _question_cache[cache_key]
-    bank = _generate_question_bank(subject, grade)
-    _question_cache[cache_key] = bank
-    return bank
-
-
-def _generate_question_bank(subject: str, grade: int) -> dict:
-    """为指定科目和年级生成题库。"""
-    from syllabus import get_syllabus
-
-    kps = get_syllabus(subject, grade)
-    bank = {}
-
-    for kp in kps:
-        kp_id = kp["id"]
-        kp_name = kp["name"]
-        bank[kp_id] = {}
-        for diff in DIFFICULTY_LEVELS:
-            questions = _generate_questions(subject, grade, kp_name, diff, count=5)
-            bank[kp_id][diff] = questions
-
-    return bank
-
-
-def _generate_questions(
-    subject: str, grade: int, kp_name: str, difficulty: str, count: int = 5
-) -> list:
-    """生成指定条件的题目列表。"""
-    generator_name = f"_gen_{subject}_{difficulty}"
-    generator = globals().get(generator_name) or globals().get(f"_gen_{subject}")
-    if generator:
-        return generator(grade, kp_name, count)
-
-
 # ---------------------------------------------------------------------------
 # 公共 API
 # ---------------------------------------------------------------------------
 
 
-def generate_question(
-    subject: str, grade: int, kp_id: int, difficulty: str, question_index: int = 0
-) -> dict:
-    """生成一道题目（用于重试错题）。先尝试 LangChain，失败则使用本地题库。"""
-    from syllabus import get_knowledge_point
-
-    kp = get_knowledge_point(subject, grade, kp_id)
-    kp_name = kp["name"] if kp else ""
-
-    # 尝试 LangChain — 用 question_index 生成不同题目
-    result = _try_langchain_question_batch(subject, grade, kp_name, difficulty)
-    if result and question_index < len(result):
-        return result[question_index]
-
-    # 回退到本地题库
-    bank = _get_question_bank(subject, grade)
-    if kp_id in bank and difficulty in bank[kp_id] and bank[kp_id][difficulty]:
-        return random.choice(bank[kp_id][difficulty])
-    return {}
-
-
 def generate_question_batch(
-    subject: str, grade: int, kp_id: int, difficulty: str
+    subject: str, grade: str, kp_id: str, difficulty: str
 ) -> list[dict]:
     """生成 8 道题目。先尝试 LangChain，失败则使用本地题库。"""
-    from syllabus import get_knowledge_point
-
-    kp = get_knowledge_point(subject, grade, kp_id)
-    kp_name = kp["name"] if kp else ""
-
     # 尝试 LangChain 批量生成
-    result = _try_langchain_question_batch(subject, grade, kp_name, difficulty)
+    result = _try_langchain_question_batch(subject, grade, kp_id, difficulty)
     if result:
         return result
-
-    # 回退到本地题库（逐题随机选取）
-    bank = _get_question_bank(subject, grade)
-    questions = []
-    if kp_id in bank and difficulty in bank[kp_id] and bank[kp_id][difficulty]:
-        pool = bank[kp_id][difficulty]
-        for i in range(min(8, len(pool))):
-            questions.append(random.choice(pool))
-    return questions
+    return []
 
 
 def evaluate_answer(
     subject: str,
-    grade: int,
-    kp_id: int,
+    grade: str,
+    kp_id: str,
     difficulty: str,
     question: str,
     options: dict,
@@ -527,10 +450,6 @@ def evaluate_answer(
     correct_answer: str,
 ) -> dict:
     """评估用户答案。先尝试 LangChain，失败则本地判断。"""
-    from syllabus import get_knowledge_point
-
-    kp = get_knowledge_point(subject, grade, kp_id)
-    kp_name = kp["name"] if kp else str(kp_id)
 
     # 应用题模式（无选项）：文本相似度比较
     if not options or options == {}:
@@ -539,7 +458,7 @@ def evaluate_answer(
         result = _try_langchain_evaluation(
             subject,
             grade,
-            kp_name,
+            kp_id,
             difficulty,
             question,
             options,

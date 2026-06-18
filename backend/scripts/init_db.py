@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from mysql.connector import pooling
 
 # 加载 .env 文件（优先于系统环境变量）
-env_path = f"{Path(__file__).resolve().parent}/.env"
+env_path = f"{Path(__file__).resolve().parent.parent}/.env"
 load_dotenv(dotenv_path=env_path, override=True)
 
 # 数据库配置（与管理配置一致）

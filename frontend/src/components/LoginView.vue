@@ -1,7 +1,10 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
+import { useRouter } from "vue-router";
+import { useUserStore } from "../stores/user.js";
 
-const emit = defineEmits(["login", "register", "back"]);
+const router = useRouter();
+const userStore = useUserStore();
 
 const username = ref("");
 const password = ref("");
@@ -55,7 +58,7 @@ function handleSliderChange(e) {
 const sliderBackground = computed(() => {
   const percent = sliderOffset.value * 100;
   return {
-    background: `linear-gradient(to right, var(--success) 0%, var(--success) ${percent}%, #e2e8f0 ${percent}%, #e2e8f0 100%)`
+    background: `linear-gradient(to right, var(--success) 0%, var(--success) ${percent}%, #e2e8f0 ${percent}%, #e2e8f0 100%)`,
   };
 });
 
@@ -100,23 +103,34 @@ async function handleLogin() {
     const data = await res.json();
 
     if (!res.ok) {
-      error.value = data.detail || "登录失败";
-      if (data.detail.includes("验证码")) {
+      error.value = data.message || "登录失败";
+      if (data.message.includes("验证码")) {
         await fetchCaptcha();
       }
       return;
     }
 
     error.value = "";
-    emit("login", data);
+    userStore.setAuth(data);
+    router.push({
+      path: "/home",
+    });
   } catch (e) {
     console.error("登录失败:", e);
     error.value = "网络错误，请稍后重试";
   }
 }
 
+function goToRegister() {
+  router.push({
+    path: "/register",
+  });
+}
+
 function handleBack() {
-  emit("back");
+  router.push({
+    path: "/",
+  });
 }
 </script>
 
@@ -150,10 +164,6 @@ function handleBack() {
       <div class="form-group">
         <label>滑动验证</label>
         <div class="captcha-container">
-          <div class="captcha-display">
-            <span class="captcha-target">🎯 目标：{{ captchaTarget?.toFixed(2) }}</span>
-            <span class="captcha-current">当前：{{ captchaValue?.toFixed(2) }}</span>
-          </div>
           <!-- 进度条容器，包含目标刻度标记 -->
           <div class="slider-wrapper">
             <input
@@ -193,9 +203,7 @@ function handleBack() {
 
       <div class="login-footer">
         还没有账号？
-        <a href="#" class="login-link" @click.prevent="emit('register')"
-          >去注册</a
-        >
+        <a href="#" class="login-link" @click.prevent="goToRegister">去注册</a>
       </div>
     </div>
   </div>

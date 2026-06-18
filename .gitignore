@@ -1,6 +1,7 @@
 .env
 node_modules/
 claude.sh
+codex.sh
 .claude/
 .claude-flow
 .mcp.json
